@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, handleServerError } from "@/lib/api";
 import { toProductDTO } from "@/lib/serializers";
 import { parseProductInput, ValidationError } from "@/lib/validate";
+import { MOCK_MODE, mockListProducts, mockCreateProduct } from "@/lib/mock-store";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    if (MOCK_MODE) return ok(mockListProducts(searchParams));
     const search = searchParams.get("search")?.trim();
     const branch = searchParams.get("branch");
     const category = searchParams.get("category");
@@ -59,6 +61,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const input = parseProductInput(body);
+
+    if (MOCK_MODE) return ok(mockCreateProduct(input), 201);
 
     const product = await prisma.product.create({
       data: {

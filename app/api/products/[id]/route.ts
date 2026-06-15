@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, handleServerError } from "@/lib/api";
 import { toProductDTO } from "@/lib/serializers";
 import { parseProductInput, ValidationError } from "@/lib/validate";
+import {
+  MOCK_MODE,
+  mockGetProduct,
+  mockUpdateProduct,
+  mockDeleteProduct,
+} from "@/lib/mock-store";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +18,10 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (MOCK_MODE) {
+      const dto = mockGetProduct(params.id);
+      return dto ? ok(dto) : fail("المنتج غير موجود", 404);
+    }
     const product = await prisma.product.findUnique({
       where: { id: params.id },
       include: {
@@ -34,6 +44,11 @@ export async function PUT(
     const body = await req.json();
     const input = parseProductInput(body);
     const id = params.id;
+
+    if (MOCK_MODE) {
+      const dto = mockUpdateProduct(id, input);
+      return dto ? ok(dto) : fail("المنتج غير موجود", 404);
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.productVariant.findMany({
@@ -127,6 +142,11 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (MOCK_MODE) {
+      const res = mockDeleteProduct(params.id);
+      return res.ok ? ok({ success: true }) : fail(res.error, res.status);
+    }
+
     // منع الحذف إذا كان المنتج مرتبطاً بفواتير (للحفاظ على سجل المبيعات)
     const salesCount = await prisma.saleItem.count({
       where: { productId: params.id },

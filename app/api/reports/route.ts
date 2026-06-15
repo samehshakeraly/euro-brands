@@ -15,6 +15,7 @@ import {
   type CategoryValue,
 } from "@/lib/constants";
 import type { ReportsData } from "@/lib/types";
+import { MOCK_MODE, mockReports } from "@/lib/mock-store";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    if (MOCK_MODE) return ok(mockReports(searchParams));
     const now = new Date();
     const from = searchParams.get("from")
       ? new Date(searchParams.get("from")!)

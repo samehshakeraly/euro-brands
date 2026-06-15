@@ -4,6 +4,7 @@ import { ok, fail, handleServerError } from "@/lib/api";
 import { toSaleDTO } from "@/lib/serializers";
 import { parseSaleInput, ValidationError } from "@/lib/validate";
 import { calcDiscount, round2 } from "@/lib/sale-utils";
+import { MOCK_MODE, mockListSales, mockCreateSale } from "@/lib/mock-store";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ const saleInclude = {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    if (MOCK_MODE) return ok(mockListSales(searchParams));
     const branch = searchParams.get("branch");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -63,6 +65,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const input = parseSaleInput(body);
+
+    if (MOCK_MODE) return ok(mockCreateSale(input), 201);
 
     // دمج الكميات المكررة لنفس المقاس
     const merged = new Map<string, number>();
