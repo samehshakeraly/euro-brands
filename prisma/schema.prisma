@@ -1,0 +1,114 @@
+// Euro Brands — Prisma Schema
+// نظام إدارة المخزون والمبيعات
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // عند استخدام Vercel Postgres مع Migrate، فعّل السطر التالي:
+  // directUrl = env("DIRECT_URL")
+}
+
+// ----------------------------------------------------
+//  Enums
+// ----------------------------------------------------
+
+enum Category {
+  CLOTHES // ملابس
+  SHOES // أحذية
+  PERFUMES // عطور
+  PANTS // بناطيل
+}
+
+enum Branch {
+  HADAYEK // حدائق المعادي
+  ZAHRAA // زهراء المعادي
+}
+
+enum DiscountType {
+  PERCENTAGE // نسبة مئوية %
+  FIXED // مبلغ ثابت
+}
+
+// ----------------------------------------------------
+//  Models
+// ----------------------------------------------------
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  brand       String
+  category    Category
+  description String?
+  images      String[] @default([]) // حتى 3 صور
+
+  variants  ProductVariant[]
+  saleItems SaleItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([brand])
+}
+
+model ProductVariant {
+  id        String @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  size     String // XS S M L XL 2XL 3XL 4XL 5XL أو مقاسات أرقام للأحذية
+  quantity Int    @default(0)
+  branch   Branch
+  price    Float // سعر البيع لكل صنف بالجنيه المصري
+
+  saleItems SaleItem[]
+
+  @@unique([productId, size, branch])
+  @@index([productId])
+  @@index([branch])
+}
+
+model Sale {
+  id         String  @id @default(cuid())
+  saleNumber Int     @unique // رقم فاتورة تصاعدي عام
+  branch     Branch
+
+  totalAmount   Float // الإجمالي قبل الخصم
+  discountType  DiscountType?
+  discountValue Float         @default(0)
+  finalAmount   Float // الصافي بعد الخصم
+
+  customerName  String?
+  customerPhone String?
+  customerNotes String?
+
+  items SaleItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([branch])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id     String @id @default(cuid())
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  quantity  Int
+  unitPrice Float
+  subtotal  Float
+
+  @@index([saleId])
+  @@index([productId])
+}
