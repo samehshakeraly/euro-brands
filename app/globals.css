@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   نظام الألوان — متغيرات تتبدل مع الوضع الليلي/النهاري
+   ============================================ */
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #e2e4ec;
+  --text: #1a1d2e;
+  --muted: #9295a8;
+}
+
+.dark {
+  --bg: #0f1117;
+  --surface: #1c1e26;
+  --surface-2: #242732;
+  --border: #2a2d3a;
+  --text: #e8e9f0;
+  --muted: #8b8fa8;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-tajawal), "Tajawal", sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* تمرير سلس وحدود متناسقة */
+  * {
+    border-color: var(--border);
+  }
+
+  /* شريط تمرير مخصص */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+  }
+}
+
+@layer components {
+  /* البطاقة الأساسية */
+  .card {
+    @apply rounded-xl border bg-surface shadow-card;
+    border-color: var(--border);
+  }
+
+  /* بطاقة بإطار علوي ملوّن */
+  .card-accent {
+    border-top: 3px solid #6c63ff;
+  }
+  .card-success {
+    border-top: 3px solid #3b9a6e;
+  }
+  .card-warning {
+    border-top: 3px solid #c9851a;
+  }
+
+  /* الأزرار */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-accent text-white hover:opacity-90;
+  }
+  .btn-secondary {
+    @apply border bg-surface text-text hover:bg-[var(--surface-2)];
+  }
+  .btn-danger {
+    @apply bg-danger text-white hover:opacity-90;
+  }
+  .btn-ghost {
+    @apply text-muted hover:bg-[var(--surface-2)] hover:text-text;
+  }
+
+  /* حقول الإدخال */
+  .input {
+    @apply w-full rounded-lg border bg-surface px-3 py-2 text-sm text-text outline-none transition-colors placeholder:text-muted focus:border-accent;
+    border-color: var(--border);
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-text;
+  }
+
+  /* الشارات */
+  .badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
+  }
+}
+
+/* تثبيت اتجاه الأرقام داخل النص العربي */
+.nums {
+  unicode-bidi: plaintext;
+}
+
+/* أنماط الطباعة — إخفاء العناصر غير الضرورية في الفاتورة المطبوعة */
+@media print {
+  header,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border-color: #ddd !important;
+  }
+}

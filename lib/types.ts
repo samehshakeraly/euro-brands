@@ -1,0 +1,130 @@
+import type {
+  BranchValue,
+  CategoryValue,
+  DiscountTypeValue,
+} from "./constants";
+
+// الأنواع المشتركة بين الواجهة والـ API (نسخة قابلة للتسلسل JSON)
+
+export interface VariantDTO {
+  id: string;
+  productId: string;
+  size: string;
+  quantity: number;
+  branch: BranchValue;
+  price: number;
+}
+
+export interface ProductDTO {
+  id: string;
+  name: string;
+  brand: string;
+  category: CategoryValue;
+  description: string | null;
+  images: string[];
+  variants: VariantDTO[];
+  totalQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaleItemDTO {
+  id: string;
+  productId: string;
+  variantId: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  productName: string;
+  brand: string;
+  size: string;
+}
+
+export interface SaleDTO {
+  id: string;
+  saleNumber: number;
+  branch: BranchValue;
+  totalAmount: number;
+  discountType: DiscountTypeValue | null;
+  discountValue: number;
+  finalAmount: number;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerNotes: string | null;
+  createdAt: string;
+  items: SaleItemDTO[];
+  itemsCount?: number;
+}
+
+// مدخلات إنشاء/تعديل المنتج
+export interface VariantInput {
+  id?: string; // موجود عند التعديل، غير موجود عند الإضافة
+  size: string;
+  quantity: number;
+  branch: BranchValue;
+  price: number;
+}
+
+export interface ProductInput {
+  name: string;
+  brand: string;
+  category: CategoryValue;
+  description?: string | null;
+  images: string[];
+  variants: VariantInput[];
+}
+
+// مدخلات إنشاء فاتورة
+export interface SaleItemInput {
+  variantId: string;
+  quantity: number;
+}
+
+export interface SaleInput {
+  branch: BranchValue;
+  items: SaleItemInput[];
+  discountType: DiscountTypeValue | null;
+  discountValue: number;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerNotes?: string | null;
+}
+
+// إحصائيات لوحة التحكم
+export interface DashboardStats {
+  todaySales: number;
+  todaySalesCount: number;
+  rangeSales: number;
+  rangeSalesCount: number;
+  branchComparison: { branch: BranchValue; total: number; count: number }[];
+  topProduct: { name: string; brand: string; quantity: number } | null;
+  lowStockCount: number;
+  dailySales: { date: string; total: number }[];
+  categoryBreakdown: { category: CategoryValue; total: number }[];
+  recentSales: SaleDTO[];
+}
+
+// بيانات صفحة التقارير
+export interface ReportsData {
+  totalSales: number;
+  invoicesCount: number;
+  itemsSold: number;
+  avgInvoice: number;
+  byBranch: { branch: BranchValue; total: number; count: number }[];
+  byCategory: { category: CategoryValue; total: number; qty: number }[];
+  dailySales: { date: string; total: number }[];
+  topProducts: {
+    name: string;
+    brand: string;
+    qty: number;
+    revenue: number;
+  }[];
+  lowStock: {
+    id: string;
+    productName: string;
+    brand: string;
+    size: string;
+    branch: BranchValue;
+    quantity: number;
+  }[];
+}
