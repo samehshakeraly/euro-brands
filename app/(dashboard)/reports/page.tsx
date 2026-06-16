@@ -104,36 +104,69 @@ export default function ReportsPage() {
                   description="لم تُسجّل مبيعات في هذه الفترة."
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right text-sm">
-                    <thead>
-                      <tr className="border-b text-muted">
-                        <th className="px-2 py-2 font-medium">المنتج</th>
-                        <th className="px-2 py-2 font-medium">الكمية</th>
-                        <th className="px-2 py-2 font-medium">الإيراد</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.topProducts.map((p, i) => (
-                        <tr
-                          key={`${p.name}-${i}`}
-                          className="border-b border-[var(--border)]"
-                        >
-                          <td className="px-2 py-2.5">
-                            <p className="font-medium text-text">{p.name}</p>
-                            <p className="text-xs text-muted">{p.brand}</p>
-                          </td>
-                          <td className="px-2 py-2.5 text-text nums">
-                            {formatNumber(p.qty)}
-                          </td>
-                          <td className="px-2 py-2.5 font-medium text-text nums">
-                            {formatCurrency(p.revenue)}
-                          </td>
+                <>
+                  {/* جدول لسطح المكتب */}
+                  <div className="hidden overflow-x-auto sm:block">
+                    <table className="w-full text-right text-sm">
+                      <thead>
+                        <tr className="border-b text-muted">
+                          <th className="px-2 py-2 font-medium">المنتج</th>
+                          <th className="px-2 py-2 font-medium">الكمية</th>
+                          <th className="px-2 py-2 font-medium">الإيراد</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {data.topProducts.map((p, i) => (
+                          <tr
+                            key={`${p.name}-${i}`}
+                            className="border-b border-[var(--border)]"
+                          >
+                            <td className="px-2 py-2.5">
+                              <p className="font-medium text-text">{p.name}</p>
+                              <p className="text-xs text-muted">{p.brand}</p>
+                            </td>
+                            <td className="px-2 py-2.5 text-text nums">
+                              {formatNumber(p.qty)}
+                            </td>
+                            <td className="px-2 py-2.5 font-medium text-text nums">
+                              {formatCurrency(p.revenue)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* بطاقات للموبايل */}
+                  <div className="space-y-2 sm:hidden">
+                    {data.topProducts.map((p, i) => (
+                      <div
+                        key={`${p.name}-${i}`}
+                        className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent nums">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-text">
+                              {p.name}
+                            </p>
+                            <p className="text-xs text-muted">{p.brand}</p>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-left">
+                          <p className="font-bold text-text nums">
+                            {formatCurrency(p.revenue)}
+                          </p>
+                          <p className="text-xs text-muted nums">
+                            {formatNumber(p.qty)} قطعة
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </Card>
 
@@ -149,42 +182,68 @@ export default function ReportsPage() {
                   description="لا توجد أصناف منخفضة أو نافدة الكمية."
                 />
               ) : (
-                <div className="max-h-[360px] overflow-y-auto">
-                  <table className="w-full text-right text-sm">
-                    <thead className="sticky top-0 bg-surface">
-                      <tr className="border-b text-muted">
-                        <th className="px-2 py-2 font-medium">المنتج</th>
-                        <th className="px-2 py-2 font-medium">الفرع</th>
-                        <th className="px-2 py-2 font-medium">المقاس</th>
-                        <th className="px-2 py-2 font-medium">الحالة</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.lowStock.map((v) => (
-                        <tr
-                          key={v.id}
-                          className="border-b border-[var(--border)]"
-                        >
-                          <td className="px-2 py-2.5">
-                            <p className="font-medium text-text">
+                <>
+                  {/* جدول لسطح المكتب */}
+                  <div className="hidden max-h-[360px] overflow-y-auto sm:block">
+                    <table className="w-full text-right text-sm">
+                      <thead className="sticky top-0 bg-surface">
+                        <tr className="border-b text-muted">
+                          <th className="px-2 py-2 font-medium">المنتج</th>
+                          <th className="px-2 py-2 font-medium">الفرع</th>
+                          <th className="px-2 py-2 font-medium">المقاس</th>
+                          <th className="px-2 py-2 font-medium">الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.lowStock.map((v) => (
+                          <tr
+                            key={v.id}
+                            className="border-b border-[var(--border)]"
+                          >
+                            <td className="px-2 py-2.5">
+                              <p className="font-medium text-text">
+                                {v.productName}
+                              </p>
+                              <p className="text-xs text-muted">{v.brand}</p>
+                            </td>
+                            <td className="px-2 py-2.5">
+                              <BranchBadge branch={v.branch} />
+                            </td>
+                            <td className="px-2 py-2.5 text-text nums">
+                              {v.size}
+                            </td>
+                            <td className="px-2 py-2.5">
+                              <StockBadge quantity={v.quantity} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* بطاقات للموبايل */}
+                  <div className="max-h-[420px] space-y-2 overflow-y-auto sm:hidden">
+                    {data.lowStock.map((v) => (
+                      <div key={v.id} className="rounded-lg border p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-text">
                               {v.productName}
                             </p>
                             <p className="text-xs text-muted">{v.brand}</p>
-                          </td>
-                          <td className="px-2 py-2.5">
-                            <BranchBadge branch={v.branch} />
-                          </td>
-                          <td className="px-2 py-2.5 text-text nums">
-                            {v.size}
-                          </td>
-                          <td className="px-2 py-2.5">
-                            <StockBadge quantity={v.quantity} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          </div>
+                          <StockBadge quantity={v.quantity} />
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <BranchBadge branch={v.branch} />
+                          <span className="badge bg-[var(--surface-2)] text-muted nums">
+                            مقاس {v.size}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </Card>
           </div>

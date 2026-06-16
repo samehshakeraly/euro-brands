@@ -112,6 +112,21 @@
   unicode-bidi: plaintext;
 }
 
+/* تحسينات اللمس على شاشات الهواتف — أهداف نقر كبيرة وخطوط مقروءة */
+@media (max-width: 640px) {
+  .btn {
+    min-height: 44px;
+  }
+  .input {
+    min-height: 44px;
+    /* 16px يمنع تكبير Safari/iOS التلقائي عند التركيز على الحقل */
+    font-size: 16px;
+  }
+  .label {
+    font-size: 0.9375rem;
+  }
+}
+
 /* أنماط الطباعة — إخفاء العناصر غير الضرورية في الفاتورة المطبوعة */
 @media print {
   header,

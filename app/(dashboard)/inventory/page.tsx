@@ -310,14 +310,14 @@ function ProductCard({
         <div className="mt-4 flex gap-2 border-t pt-3">
           <Link
             href={`/inventory/${product.id}/edit`}
-            className="btn btn-secondary h-9 flex-1 text-xs"
+            className="btn btn-secondary h-10 flex-1 text-sm"
           >
             <Pencil className="h-4 w-4" />
             تعديل
           </Link>
           <button
             onClick={onDelete}
-            className="btn btn-ghost h-9 w-9 !px-0 text-danger hover:bg-[rgba(217,83,79,0.12)]"
+            className="btn btn-ghost h-10 w-10 !px-0 text-danger hover:bg-[rgba(217,83,79,0.12)]"
             aria-label="حذف"
           >
             <Trash2 className="h-4 w-4" />

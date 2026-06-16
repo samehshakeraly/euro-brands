@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload,
@@ -45,6 +45,24 @@ function emptyRow(): VariantRow {
     quantity: "0",
     price: "0",
   };
+}
+
+// حقل بعنوان يظهر على الموبايل فقط (العناوين تظهر كرؤوس أعمدة على سطح المكتب)
+function VariantField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <span className="mb-1 block text-xs font-medium text-muted sm:hidden">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
 }
 
 export function ProductForm({ initial }: { initial?: ProductDTO }) {
@@ -321,63 +339,71 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           {variants.map((row) => (
             <div
               key={row.clientId}
-              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.4fr_1fr_1fr_1.2fr_auto] sm:border-0 sm:p-0"
+              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.4fr_1fr_1fr_1.2fr_auto] sm:items-start sm:border-0 sm:p-0"
             >
-              <select
-                className="input"
-                value={row.branch}
-                onChange={(e) =>
-                  updateRow(row.clientId, {
-                    branch: e.target.value as BranchValue,
-                  })
-                }
-              >
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {BRANCH_LABELS[b]}
-                  </option>
-                ))}
-              </select>
+              <VariantField label="الفرع">
+                <select
+                  className="input"
+                  value={row.branch}
+                  onChange={(e) =>
+                    updateRow(row.clientId, {
+                      branch: e.target.value as BranchValue,
+                    })
+                  }
+                >
+                  {BRANCHES.map((b) => (
+                    <option key={b} value={b}>
+                      {BRANCH_LABELS[b]}
+                    </option>
+                  ))}
+                </select>
+              </VariantField>
 
-              <select
-                className="input"
-                value={row.size}
-                onChange={(e) =>
-                  updateRow(row.clientId, { size: e.target.value })
-                }
-              >
-                <option value="">المقاس</option>
-                {sizeOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-                {/* الحفاظ على مقاس قديم خارج قائمة الفئة الحالية */}
-                {row.size && !sizeOptions.includes(row.size) && (
-                  <option value={row.size}>{row.size}</option>
-                )}
-              </select>
+              <VariantField label="المقاس">
+                <select
+                  className="input"
+                  value={row.size}
+                  onChange={(e) =>
+                    updateRow(row.clientId, { size: e.target.value })
+                  }
+                >
+                  <option value="">المقاس</option>
+                  {sizeOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                  {/* الحفاظ على مقاس قديم خارج قائمة الفئة الحالية */}
+                  {row.size && !sizeOptions.includes(row.size) && (
+                    <option value={row.size}>{row.size}</option>
+                  )}
+                </select>
+              </VariantField>
 
-              <input
-                type="number"
-                min={0}
-                className="input nums"
-                value={row.quantity}
-                onChange={(e) =>
-                  updateRow(row.clientId, { quantity: e.target.value })
-                }
-              />
+              <VariantField label="الكمية">
+                <input
+                  type="number"
+                  min={0}
+                  className="input nums"
+                  value={row.quantity}
+                  onChange={(e) =>
+                    updateRow(row.clientId, { quantity: e.target.value })
+                  }
+                />
+              </VariantField>
 
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className="input nums"
-                value={row.price}
-                onChange={(e) =>
-                  updateRow(row.clientId, { price: e.target.value })
-                }
-              />
+              <VariantField label="السعر (ج.م)">
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="input nums"
+                  value={row.price}
+                  onChange={(e) =>
+                    updateRow(row.clientId, { price: e.target.value })
+                  }
+                />
+              </VariantField>
 
               <button
                 type="button"
@@ -389,10 +415,11 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   )
                 }
                 disabled={variants.length === 1}
-                className="btn btn-ghost h-[38px] w-full text-danger hover:bg-[rgba(217,83,79,0.12)] disabled:opacity-30 sm:w-[38px] sm:!px-0"
+                className="btn btn-ghost col-span-2 h-11 w-full gap-2 text-danger hover:bg-[rgba(217,83,79,0.12)] disabled:opacity-30 sm:col-span-1 sm:h-[38px] sm:w-[38px] sm:!px-0"
                 aria-label="حذف الصف"
               >
                 <Trash2 className="h-4 w-4" />
+                <span className="sm:hidden">حذف الصف</span>
               </button>
             </div>
           ))}

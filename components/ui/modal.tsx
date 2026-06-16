@@ -42,14 +42,14 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
         className={cn(
-          "card relative z-10 max-h-[90vh] w-full animate-fade-in overflow-y-auto",
+          "card relative z-10 max-h-[90vh] w-full animate-fade-in overflow-y-auto rounded-b-none sm:rounded-xl",
           sizeClass[size]
         )}
       >
@@ -58,7 +58,7 @@ export function Modal({
             <h2 className="text-base font-bold text-text">{title}</h2>
             <button
               onClick={onClose}
-              className="btn btn-ghost h-8 w-8 !px-0"
+              className="btn btn-ghost h-9 w-9 !px-0"
               aria-label="إغلاق"
             >
               <X className="h-5 w-5" />
@@ -67,7 +67,7 @@ export function Modal({
         )}
         <div className="p-5">{children}</div>
         {footer && (
-          <div className="flex justify-start gap-2 border-t px-5 py-4">
+          <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:justify-start">
             {footer}
           </div>
         )}

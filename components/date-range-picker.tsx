@@ -56,7 +56,7 @@ export function DateRangePicker({
             key={p.key}
             onClick={() => setPreset(p.key)}
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "rounded-md px-3.5 py-2 text-sm font-medium transition-colors",
               preset === p.key
                 ? "bg-accent text-white"
                 : "text-muted hover:text-text"

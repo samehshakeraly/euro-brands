@@ -221,7 +221,7 @@ function PosRegister({
   }
 
   return (
-    <div>
+    <div className="pb-24 md:pb-0">
       {/* رأس الصفحة: الفرع الحالي */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -241,7 +241,7 @@ function PosRegister({
       </div>
 
       {lastSale && (
-        <Card className="mb-4 flex items-center gap-3 border-r-4 border-r-success p-4">
+        <Card className="mb-4 flex flex-col items-start gap-2 border-r-4 border-r-success p-4 sm:flex-row sm:items-center sm:gap-3">
           <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
           <p className="text-sm text-text">
             تم تسجيل الفاتورة{" "}
@@ -252,7 +252,7 @@ function PosRegister({
           </p>
           <a
             href={`/sales/${lastSale.id}`}
-            className="btn btn-ghost mr-auto h-8 text-xs text-accent"
+            className="btn btn-ghost h-9 text-sm text-accent sm:mr-auto"
           >
             عرض الفاتورة
           </a>
@@ -299,7 +299,7 @@ function PosRegister({
 
         {/* الفاتورة الحالية (يمين) */}
         <div className="order-2 w-full md:order-1 md:w-[400px] md:shrink-0">
-          <Card className="sticky top-20 p-4" tone="accent">
+          <Card className="p-4 md:sticky md:top-20" tone="accent">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-base font-bold text-text">
                 <ShoppingCart className="h-5 w-5 text-accent" />
@@ -337,19 +337,20 @@ function PosRegister({
                       </div>
                       <button
                         onClick={() => removeItem(item.variantId)}
-                        className="text-muted hover:text-danger"
+                        className="-mr-1 flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-[var(--surface-2)] hover:text-danger"
                         aria-label="حذف"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                     <div className="mt-2 flex items-center justify-between">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setQty(item.variantId, item.quantity - 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md border text-muted hover:text-text"
+                          className="flex h-10 w-10 items-center justify-center rounded-md border text-muted hover:text-text"
+                          aria-label="إنقاص"
                         >
-                          <Minus className="h-3.5 w-3.5" />
+                          <Minus className="h-4 w-4" />
                         </button>
                         <input
                           type="number"
@@ -359,14 +360,15 @@ function PosRegister({
                           onChange={(e) =>
                             setQty(item.variantId, Number(e.target.value))
                           }
-                          className="input h-7 w-14 px-1 text-center nums"
+                          className="input h-10 w-16 px-1 text-center nums"
                         />
                         <button
                           onClick={() => setQty(item.variantId, item.quantity + 1)}
                           disabled={item.quantity >= item.available}
-                          className="flex h-7 w-7 items-center justify-center rounded-md border text-muted hover:text-text disabled:opacity-30"
+                          className="flex h-10 w-10 items-center justify-center rounded-md border text-muted hover:text-text disabled:opacity-30"
+                          aria-label="زيادة"
                         >
-                          <Plus className="h-3.5 w-3.5" />
+                          <Plus className="h-4 w-4" />
                         </button>
                       </div>
                       <span className="text-sm font-bold text-text nums">
@@ -380,7 +382,7 @@ function PosRegister({
 
             {/* بيانات العميل */}
             <details className="mt-4 rounded-lg border">
-              <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-text">
+              <summary className="cursor-pointer px-3 py-3 text-base font-medium text-text">
                 بيانات العميل (اختياري)
               </summary>
               <div className="space-y-2 border-t p-3">
@@ -454,7 +456,7 @@ function PosRegister({
             <button
               onClick={confirmSale}
               disabled={submitting || cart.length === 0}
-              className="btn btn-primary mt-4 h-11 w-full text-base"
+              className="btn btn-primary mt-4 hidden h-11 w-full text-base md:inline-flex"
             >
               {submitting ? (
                 <Spinner className="h-5 w-5" />
@@ -465,6 +467,32 @@ function PosRegister({
             </button>
           </Card>
         </div>
+      </div>
+
+      {/* شريط تأكيد ثابت أسفل الشاشة (للموبايل — يُستخدم بإبهام واحد) */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-surface p-3 shadow-[0_-2px_12px_rgba(0,0,0,0.12)] md:hidden">
+        <button
+          onClick={confirmSale}
+          disabled={submitting || cart.length === 0}
+          className="btn btn-primary h-14 w-full justify-between text-base"
+        >
+          <span className="flex items-center gap-2">
+            {submitting ? (
+              <Spinner className="h-5 w-5" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5" />
+            )}
+            تأكيد البيعة
+          </span>
+          <span className="flex items-center gap-2 nums">
+            {cart.length > 0 && (
+              <span className="rounded-md bg-white/20 px-2 py-0.5 text-sm">
+                {formatNumber(itemsCount)}
+              </span>
+            )}
+            {formatCurrency(finalAmount)}
+          </span>
+        </button>
       </div>
     </div>
   );
@@ -502,7 +530,7 @@ function SearchResult({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-2">
         {product.variants.map((v) => {
           const inCart = cart.find((c) => c.variantId === v.id)?.quantity ?? 0;
           const out = v.quantity <= 0;
@@ -514,15 +542,15 @@ function SearchResult({
               onClick={() => onAdd(product, v)}
               title={out ? "نفذت الكمية" : `المتاح: ${v.quantity}`}
               className={cn(
-                "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                "inline-flex min-h-[44px] min-w-[3.5rem] items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
                 out
                   ? "cursor-not-allowed text-muted line-through opacity-60"
-                  : "hover:border-accent hover:bg-accent-soft hover:text-accent",
-                inCart > 0 && !out && "border-accent text-accent"
+                  : "hover:border-accent hover:bg-accent-soft hover:text-accent active:bg-accent-soft",
+                inCart > 0 && !out && "border-accent bg-accent-soft text-accent"
               )}
             >
               <span className="nums">{v.size}</span>
-              <span className="mr-1 text-[10px] text-muted nums">
+              <span className="mr-1 text-xs text-muted nums">
                 ({out ? "نفذ" : v.quantity})
               </span>
             </button>

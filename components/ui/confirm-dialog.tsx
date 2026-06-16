@@ -31,7 +31,7 @@ export function ConfirmDialog({
       footer={
         <>
           <button
-            className="btn btn-danger"
+            className="btn btn-danger w-full sm:w-auto"
             onClick={onConfirm}
             disabled={loading}
           >
@@ -39,7 +39,7 @@ export function ConfirmDialog({
             {confirmLabel}
           </button>
           <button
-            className="btn btn-secondary"
+            className="btn btn-secondary w-full sm:w-auto"
             onClick={onCancel}
             disabled={loading}
           >

@@ -73,11 +73,12 @@ export function TopNav() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <button
-            className="btn btn-ghost h-9 w-9 !px-0 md:hidden"
+            className="btn btn-ghost h-11 w-11 !px-0 md:hidden"
             onClick={() => setMobileOpen((v) => !v)}
             aria-label="القائمة"
+            aria-expanded={mobileOpen}
           >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
       </div>
@@ -93,13 +94,13 @@ export function TopNav() {
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "flex items-center gap-3 border-r-[3px] px-5 py-3 text-sm font-medium",
+                  "flex items-center gap-3 border-r-[3px] px-5 py-4 text-base font-medium",
                   active
                     ? "border-accent bg-accent-soft text-accent"
                     : "border-transparent text-muted"
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-5 w-5" />
                 {item.label}
               </Link>
             );
