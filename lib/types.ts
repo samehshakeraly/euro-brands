@@ -74,6 +74,24 @@ export interface ProductInput {
   variants: VariantInput[];
 }
 
+// استيراد الجرد من Excel
+export interface ImportRow {
+  name: string;
+  brand: string;
+  category: CategoryValue;
+  branch: BranchValue;
+  size: string;
+  quantity: number;
+  price: number;
+}
+
+export interface ImportResult {
+  totalRows: number;
+  newProducts: number;
+  newVariants: number;
+  updatedVariants: number;
+}
+
 // مدخلات إنشاء فاتورة
 export interface SaleItemInput {
   variantId: string;
@@ -102,6 +120,20 @@ export interface DashboardStats {
   dailySales: { date: string; total: number }[];
   categoryBreakdown: { category: CategoryValue; total: number }[];
   recentSales: SaleDTO[];
+}
+
+// رؤية ذكية واحدة (من Gemini أو القواعد)
+export interface Insight {
+  title: string;
+  description: string;
+  type: "success" | "warning" | "danger";
+  category: string;
+}
+
+export interface InsightsResponse {
+  insights: Insight[];
+  source: "ai" | "rules";
+  generatedAt: string;
 }
 
 // بيانات صفحة التقارير

@@ -2,10 +2,19 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Search, Pencil, Trash2, Package, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Pencil,
+  Trash2,
+  Package,
+  X,
+  FileSpreadsheet,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiDelete } from "@/lib/client";
+import { ImportInventoryModal } from "@/components/import-inventory-modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { PageLoader } from "@/components/ui/spinner";
@@ -44,6 +53,7 @@ export default function InventoryPage() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [toDelete, setToDelete] = useState<ProductDTO | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const products = data ?? [];
 
@@ -99,10 +109,19 @@ export default function InventoryPage() {
         title="المخزون"
         description="إدارة المنتجات والكميات في الفرعين"
         actions={
-          <Link href="/inventory/new" className="btn btn-primary">
-            <Plus className="h-4 w-4" />
-            إضافة منتج
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setImportOpen(true)}
+              className="btn btn-secondary"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              استيراد الجرد
+            </button>
+            <Link href="/inventory/new" className="btn btn-primary">
+              <Plus className="h-4 w-4" />
+              إضافة منتج
+            </Link>
+          </div>
         }
       />
 
@@ -243,6 +262,13 @@ export default function InventoryPage() {
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setToDelete(null)}
+      />
+
+      <ImportInventoryModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={refetch}
+        products={products}
       />
     </div>
   );

@@ -5,7 +5,12 @@ import {
   type BranchValue,
   type CategoryValue,
 } from "./constants";
-import type { ProductInput, SaleInput, VariantInput } from "./types";
+import type {
+  ImportRow,
+  ProductInput,
+  SaleInput,
+  VariantInput,
+} from "./types";
 
 export class ValidationError extends Error {}
 
@@ -73,6 +78,46 @@ export function parseProductInput(body: any): ProductInput {
     images,
     variants,
   };
+}
+
+// التحقق من صفوف استيراد الجرد
+export function parseImportRows(body: any): ImportRow[] {
+  const raw = Array.isArray(body?.rows) ? body.rows : [];
+  if (raw.length === 0)
+    throw new ValidationError("لا توجد صفوف صالحة للاستيراد");
+
+  return raw.map((r: any, i: number) => {
+    const name = asString(r?.name);
+    const brand = asString(r?.brand);
+    const category = asString(r?.category);
+    const branch = asString(r?.branch);
+    const size = asString(r?.size);
+    const quantity = Number(r?.quantity);
+    const price = Number(r?.price);
+    const at = `الصف ${i + 1}`;
+
+    if (!name) throw new ValidationError(`اسم المنتج مطلوب (${at})`);
+    if (!brand) throw new ValidationError(`البراند مطلوب (${at})`);
+    if (!CATEGORIES.includes(category as CategoryValue))
+      throw new ValidationError(`الفئة غير صحيحة (${at})`);
+    if (!BRANCHES.includes(branch as BranchValue))
+      throw new ValidationError(`الفرع غير صحيح (${at})`);
+    if (!size) throw new ValidationError(`المقاس مطلوب (${at})`);
+    if (!Number.isFinite(quantity) || quantity < 0)
+      throw new ValidationError(`الكمية غير صحيحة (${at})`);
+    if (!Number.isFinite(price) || price < 0)
+      throw new ValidationError(`السعر غير صحيح (${at})`);
+
+    return {
+      name,
+      brand,
+      category: category as CategoryValue,
+      branch: branch as BranchValue,
+      size,
+      quantity: Math.floor(quantity),
+      price,
+    };
+  });
 }
 
 // التحقق من مدخلات الفاتورة

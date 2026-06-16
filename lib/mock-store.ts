@@ -17,6 +17,8 @@ import {
 import { ValidationError } from "./validate";
 import type {
   DashboardStats,
+  ImportResult,
+  ImportRow,
   ProductDTO,
   ProductInput,
   ReportsData,
@@ -590,6 +592,61 @@ export function mockDeleteProduct(
 
   store.products = store.products.filter((x) => x.id !== id);
   return { ok: true };
+}
+
+// استيراد الجرد بالجملة: تحديث الكميات/الأسعار وإضافة الجديد
+export function mockImportInventory(rows: ImportRow[]): ImportResult {
+  const result: ImportResult = {
+    totalRows: rows.length,
+    newProducts: 0,
+    newVariants: 0,
+    updatedVariants: 0,
+  };
+
+  for (const row of rows) {
+    const key = (s: string) => s.trim().toLowerCase();
+    let product = store.products.find(
+      (p) => key(p.name) === key(row.name) && key(p.brand) === key(row.brand)
+    );
+
+    if (!product) {
+      product = {
+        id: nextId("p"),
+        name: row.name,
+        brand: row.brand,
+        category: row.category,
+        description: null,
+        images: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        variants: [],
+      };
+      store.products.unshift(product);
+      result.newProducts++;
+    }
+
+    const variant = product.variants.find(
+      (v) => v.size === row.size && v.branch === row.branch
+    );
+    if (variant) {
+      variant.quantity = row.quantity;
+      variant.price = row.price;
+      result.updatedVariants++;
+    } else {
+      product.variants.push({
+        id: nextId("v"),
+        productId: product.id,
+        size: row.size,
+        branch: row.branch,
+        quantity: row.quantity,
+        price: row.price,
+      });
+      result.newVariants++;
+    }
+    product.updatedAt = new Date();
+  }
+
+  return result;
 }
 
 // ----------------------------------------------------

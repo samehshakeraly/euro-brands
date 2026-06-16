@@ -7,6 +7,7 @@ import {
   mockCreateProduct,
   mockUpdateProduct,
   mockDeleteProduct,
+  mockImportInventory,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -14,7 +15,11 @@ import {
   mockReports,
   mockUploadUrl,
 } from "./mock-store";
-import { parseProductInput, parseSaleInput } from "./validate";
+import {
+  parseImportRows,
+  parseProductInput,
+  parseSaleInput,
+} from "./validate";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -40,6 +45,10 @@ export async function mockApi<T>(
     if (method === "POST")
       return mockCreateProduct(parseProductInput(body)) as T;
   }
+
+  // /api/products/import (قبل مطابقة المعرّف لأن "import" يطابق النمط)
+  if (path === "/api/products/import" && method === "POST")
+    return mockImportInventory(parseImportRows(body)) as T;
 
   // /api/products/[id]
   const productMatch = path.match(/^\/api\/products\/([^/]+)$/);

@@ -8,12 +8,14 @@ import {
   Calculator,
   AlertTriangle,
   Trophy,
+  FileDown,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard, Card } from "@/components/ui/card";
-import { PageLoader } from "@/components/ui/spinner";
+import { PageLoader, Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StockBadge, BranchBadge } from "@/components/ui/badge";
 import { SalesLineChart } from "@/components/charts/sales-line-chart";
@@ -29,13 +31,43 @@ export default function ReportsPage() {
       )}&to=${encodeURIComponent(range.to)}`
     : null;
   const { data, loading, error } = useFetch<ReportsData>(url);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (!data || !range) return;
+    setExporting(true);
+    try {
+      const { generateReportPdf } = await import("@/lib/pdf/report-pdf");
+      generateReportPdf(data, range);
+    } catch {
+      toast.error("تعذّر إنشاء ملف PDF");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div>
       <PageHeader
         title="التقارير"
         description="تحليل تفصيلي للمبيعات والمنتجات والمخزون"
-        actions={<DateRangePicker onChange={setRange} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangePicker onChange={setRange} />
+            <button
+              onClick={handleExport}
+              disabled={!data || exporting}
+              className="btn btn-secondary"
+            >
+              {exporting ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              تصدير PDF
+            </button>
+          </div>
+        }
       />
 
       {loading && <PageLoader />}
