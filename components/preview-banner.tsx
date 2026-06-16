@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { FlaskConical } from "lucide-react";
+import { USE_CLIENT_MOCK } from "@/lib/mock-flag";
 
 // شريط يوضح أن التطبيق يعمل ببيانات تجريبية (بدون قاعدة بيانات)
 export function PreviewBanner() {
-  const [mock, setMock] = useState(false);
+  // يظهر فوراً في وضع المعاينة من جهة المتصفح، أو عند تفعيله من جهة الخادم
+  const [mock, setMock] = useState(USE_CLIENT_MOCK);
 
   useEffect(() => {
+    if (USE_CLIENT_MOCK) return; // مفعّل أصلاً في المتصفح
     fetch("/api/preview-mode")
       .then((r) => r.json())
       .then((d) => setMock(!!d?.mock))
@@ -23,7 +26,7 @@ export function PreviewBanner() {
         <span>
           <span className="font-bold">وضع المعاينة:</span> يتم عرض بيانات تجريبية
           بدون قاعدة بيانات. أي تعديلات (مبيعات أو منتجات) مؤقتة وتُفقد عند إعادة
-          تشغيل الخادم.
+          تحميل الصفحة.
         </span>
       </div>
     </div>
