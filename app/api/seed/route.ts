@@ -20,20 +20,34 @@ function tokenState(req: Request): "missing-env" | "bad" | "ok" {
   return provided && provided === expected ? "ok" : "bad";
 }
 
-// إنشاء المخطط عند غيابه (بديل عن prisma db push، يعمل عبر اتصال التشغيل)
-async function ensureSchema(): Promise<boolean> {
-  const rows = await prisma.$queryRawUnsafe<{ t: string | null }[]>(
-    `SELECT to_regclass('public."Product"') AS t`
-  );
-  if (rows?.[0]?.t) return false; // المخطط موجود
+// إنشاء المخطط دائماً وبشكل غير حسّاس للتكرار (idempotent) — بديل موثوق عن
+// prisma db push يعمل عبر اتصال التشغيل. يتجاهل أخطاء "موجود مسبقاً".
+const DUPLICATE = /already exists|duplicate/i;
 
+async function ensureSchema(): Promise<boolean> {
   const statements = INIT_SQL.split(";")
-    .map((s) => s.trim())
-    .filter((s) => s.replace(/--[^\n]*/g, "").trim().length > 0);
+    .map((raw) =>
+      raw
+        .split("\n")
+        .filter((line) => !line.trim().startsWith("--"))
+        .join("\n")
+        .trim()
+    )
+    .filter((s) => s.length > 0);
+
+  let executed = 0;
   for (const stmt of statements) {
-    await prisma.$executeRawUnsafe(stmt);
+    try {
+      await prisma.$executeRawUnsafe(stmt);
+      executed++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const metaMsg = String((e as { meta?: { message?: string } })?.meta?.message ?? "");
+      if (DUPLICATE.test(msg) || DUPLICATE.test(metaMsg)) continue; // الجدول/النوع موجود — تجاهل
+      throw e;
+    }
   }
-  return true;
+  return executed > 0; // true إذا أُنشئ شيء جديد
 }
 
 async function handle(req: Request) {
