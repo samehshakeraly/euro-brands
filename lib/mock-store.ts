@@ -1172,19 +1172,27 @@ function rangeBounds(sp: URLSearchParams, defaultDays: number) {
   return { from, to, now };
 }
 
+type PaymentKey = "CASH" | "VISA" | "VODAFONE_CASH" | "INSTAPAY";
+
 export function mockDashboard(sp: URLSearchParams): DashboardStats {
   const { from, to, now } = rangeBounds(sp, 6);
   const todayStart = startOfDay(now);
   const todayEnd = endOfDay(now);
+  const yStart = startOfDay(subDays(now, 1));
+  const yEnd = endOfDay(subDays(now, 1));
 
   const inRange = store.sales.filter(
     (s) => s.status !== "CANCELLED" && s.createdAt >= from && s.createdAt <= to
   );
-  const today = store.sales.filter(
+  const todayList = store.sales.filter(
     (s) =>
       s.status !== "CANCELLED" &&
       s.createdAt >= todayStart &&
       s.createdAt <= todayEnd
+  );
+  const yList = store.sales.filter(
+    (s) =>
+      s.status !== "CANCELLED" && s.createdAt >= yStart && s.createdAt <= yEnd
   );
 
   const branchMap = new Map<BranchValue, { total: number; count: number }>();
@@ -1194,12 +1202,54 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
   for (const d of eachDayOfInterval({ start: from, end: to }))
     dayBuckets.set(format(d, "yyyy-MM-dd"), 0);
 
-  const categoryMap = new Map<CategoryValue, number>();
-  const productQty = new Map<string, { name: string; quantity: number }>();
+  const categoryMap = new Map<CategoryValue, { total: number; qty: number }>();
+  const productMap = new Map<
+    string,
+    {
+      name: string;
+      brand: string;
+      qty: number;
+      revenue: number;
+      image: string | null;
+    }
+  >();
+  const brandMap = new Map<string, { qty: number; revenue: number }>();
+  const customerMap = new Map<
+    string,
+    { name: string; phone: string | null; total: number; count: number }
+  >();
+  const paymentMap = new Map<PaymentKey, { total: number; count: number }>();
+
+  const customerKey = (name: string | null, phone: string | null) =>
+    `${(name ?? "").trim()}|${(phone ?? "").trim()}`;
 
   let rangeTotal = 0;
+  let grossSales = 0;
+  let discountedCount = 0;
+  let itemsSold = 0;
+  let deliveryCount = 0;
+  let pickupCount = 0;
+  let returnedCount = 0;
+
   for (const sale of inRange) {
     rangeTotal += sale.finalAmount;
+    grossSales += sale.totalAmount;
+    if (sale.totalAmount - sale.finalAmount > 0.001) discountedCount++;
+
+    const cname = (sale.customerName ?? "").trim();
+    if (cname || sale.customerPhone) {
+      const ck = customerKey(sale.customerName, sale.customerPhone);
+      const cust = customerMap.get(ck) ?? {
+        name: cname || "—",
+        phone: sale.customerPhone ?? null,
+        total: 0,
+        count: 0,
+      };
+      cust.total += sale.finalAmount;
+      cust.count += 1;
+      customerMap.set(ck, cust);
+    }
+
     const b = branchMap.get(sale.branch)!;
     b.total += sale.finalAmount;
     b.count += 1;
@@ -1208,59 +1258,230 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
     if (dayBuckets.has(key))
       dayBuckets.set(key, (dayBuckets.get(key) ?? 0) + sale.finalAmount);
 
+    let pk: PaymentKey;
+    if (sale.paymentMethod === "TRANSFER") {
+      pk = sale.transferMethod === "INSTAPAY" ? "INSTAPAY" : "VODAFONE_CASH";
+    } else {
+      pk = sale.paymentMethod === "VISA" ? "VISA" : "CASH";
+    }
+    const pm = paymentMap.get(pk) ?? { total: 0, count: 0 };
+    pm.total += sale.finalAmount;
+    pm.count += 1;
+    paymentMap.set(pk, pm);
+
+    if (sale.isDelivery) {
+      deliveryCount += 1;
+      if (sale.deliveryStatus === "RETURNED") returnedCount += 1;
+    } else {
+      pickupCount += 1;
+    }
+
     for (const item of sale.items) {
+      itemsSold += item.quantity;
       const ref = findVariant(item.variantId);
       const cat = ref?.product.category ?? "CLOTHES";
-      categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + item.subtotal);
-      const cur = productQty.get(item.productId) ?? {
+      const c = categoryMap.get(cat) ?? { total: 0, qty: 0 };
+      c.total += item.subtotal;
+      c.qty += item.quantity;
+      categoryMap.set(cat, c);
+
+      const p = productMap.get(item.productId) ?? {
         name: ref?.product.name ?? "—",
-        quantity: 0,
+        brand: ref?.product.brand ?? "",
+        qty: 0,
+        revenue: 0,
+        image: ref?.product.images?.[0] ?? null,
       };
-      cur.quantity += item.quantity;
-      productQty.set(item.productId, cur);
+      p.qty += item.quantity;
+      p.revenue += item.subtotal;
+      productMap.set(item.productId, p);
+
+      const brandName = ref?.product.brand ?? "";
+      if (brandName) {
+        const br = brandMap.get(brandName) ?? { qty: 0, revenue: 0 };
+        br.qty += item.quantity;
+        br.revenue += item.subtotal;
+        brandMap.set(brandName, br);
+      }
     }
   }
 
-  let topProduct: DashboardStats["topProduct"] = null;
-  let topQty = 0;
-  for (const [, v] of productQty)
-    if (v.quantity > topQty) {
-      topQty = v.quantity;
-      topProduct = { name: v.name, brand: "", quantity: v.quantity };
-    }
+  let topDay: DashboardStats["topDay"] = null;
+  for (const [date, total] of dayBuckets) {
+    if (total > (topDay?.total ?? 0)) topDay = { date, total: round2(total) };
+  }
 
-  const lowStockCount = store.products.reduce(
-    (n, p) =>
-      n + p.variants.filter((v) => v.quantity <= LOW_STOCK_THRESHOLD).length,
-    0
+  // مقارنة الأسبوع الحالي والأسبوع السابق
+  const thisWeekBuckets = new Map<string, number>();
+  const lastWeekBuckets = new Map<string, number>();
+  for (let i = 6; i >= 0; i--) {
+    thisWeekBuckets.set(format(subDays(now, i), "yyyy-MM-dd"), 0);
+    lastWeekBuckets.set(format(subDays(now, i + 7), "yyyy-MM-dd"), 0);
+  }
+  const weekStart = startOfDay(subDays(now, 13));
+  for (const s of store.sales) {
+    if (s.status === "CANCELLED") continue;
+    if (s.createdAt < weekStart || s.createdAt > todayEnd) continue;
+    const key = format(s.createdAt, "yyyy-MM-dd");
+    if (thisWeekBuckets.has(key))
+      thisWeekBuckets.set(
+        key,
+        (thisWeekBuckets.get(key) ?? 0) + s.finalAmount
+      );
+    else if (lastWeekBuckets.has(key))
+      lastWeekBuckets.set(
+        key,
+        (lastWeekBuckets.get(key) ?? 0) + s.finalAmount
+      );
+  }
+
+  // عملاء جدد في الفترة
+  const priorKeys = new Set<string>();
+  for (const s of store.sales) {
+    if (s.status === "CANCELLED") continue;
+    if (s.createdAt >= from) continue;
+    if (!s.customerName && !s.customerPhone) continue;
+    priorKeys.add(customerKey(s.customerName, s.customerPhone));
+  }
+  let newCustomersCount = 0;
+  for (const k of customerMap.keys()) {
+    if (!priorKeys.has(k)) newCustomersCount += 1;
+  }
+
+  let topBrand: DashboardStats["topBrand"] = null;
+  for (const [brand, v] of brandMap) {
+    if (v.qty > (topBrand?.qty ?? 0))
+      topBrand = { brand, qty: v.qty, revenue: round2(v.revenue) };
+  }
+
+  // اليوم vs الأمس
+  const todaySales = round2(todayList.reduce((s, x) => s + x.finalAmount, 0));
+  const yesterdaySales = round2(yList.reduce((s, x) => s + x.finalAmount, 0));
+  const todayChangePct =
+    yesterdaySales > 0
+      ? round2(((todaySales - yesterdaySales) / yesterdaySales) * 100)
+      : todaySales > 0
+        ? 100
+        : 0;
+
+  // إجمالي الرصيد المتبقي (كل الوقت)
+  const remainingTotal = round2(
+    store.sales
+      .filter((s) => s.status !== "CANCELLED")
+      .reduce((s, x) => s + (x.remainingAmount > 0 ? x.remainingAmount : 0), 0)
   );
 
-  const recentSales = [...store.sales]
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, 10)
-    .map(shapeSale);
+  const lowStock = store.products
+    .flatMap((p) =>
+      p.variants
+        .filter((v) => v.quantity <= LOW_STOCK_THRESHOLD)
+        .map((v) => ({
+          id: v.id,
+          productName: p.name,
+          brand: p.brand,
+          size: v.size,
+          branch: v.branch,
+          quantity: v.quantity,
+        }))
+    )
+    .sort((a, b) => a.quantity - b.quantity)
+    .slice(0, 100);
+
+  const slowMoving = store.products
+    .filter(
+      (p) =>
+        !productMap.has(p.id) &&
+        p.variants.reduce((s, v) => s + v.quantity, 0) > 0
+    )
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      brand: p.brand,
+      quantity: p.variants.reduce((s, v) => s + v.quantity, 0),
+    }))
+    .slice(0, 50);
+
+  const paymentLabels: Record<PaymentKey, string> = {
+    CASH: "كاش",
+    VISA: "فيزا",
+    VODAFONE_CASH: "فودافون كاش",
+    INSTAPAY: "انستا باي",
+  };
 
   return {
-    todaySales: round2(today.reduce((s, x) => s + x.finalAmount, 0)),
-    todaySalesCount: today.length,
+    todaySales,
+    todaySalesCount: todayList.length,
+    yesterdaySales,
+    yesterdaySalesCount: yList.length,
+    todayChangePct,
     rangeSales: round2(rangeTotal),
     rangeSalesCount: inRange.length,
+    avgInvoice: inRange.length ? round2(rangeTotal / inRange.length) : 0,
+    topDay,
+    remainingTotal,
+
     branchComparison: [...branchMap.entries()].map(([branch, v]) => ({
       branch,
       total: round2(v.total),
       count: v.count,
     })),
-    topProduct,
-    lowStockCount,
+    weekComparison: {
+      thisWeek: [...thisWeekBuckets.entries()].map(([date, total]) => ({
+        date,
+        total: round2(total),
+      })),
+      lastWeek: [...lastWeekBuckets.entries()].map(([date, total]) => ({
+        date,
+        total: round2(total),
+      })),
+    },
+    paymentBreakdown: (
+      ["CASH", "VISA", "VODAFONE_CASH", "INSTAPAY"] as PaymentKey[]
+    ).map((key) => {
+      const v = paymentMap.get(key) ?? { total: 0, count: 0 };
+      return {
+        key,
+        label: paymentLabels[key],
+        total: round2(v.total),
+        count: v.count,
+      };
+    }),
+
+    topProducts: [...productMap.values()]
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5)
+      .map((p) => ({ ...p, revenue: round2(p.revenue) })),
+    topBrand,
+    newCustomersCount,
+
+    deliveryStats: {
+      deliveryCount,
+      pickupCount,
+      returnedCount,
+      returnedPct: deliveryCount
+        ? round2((returnedCount / deliveryCount) * 100)
+        : 0,
+    },
+
+    grossSales: round2(grossSales),
+    discountTotal: round2(grossSales - rangeTotal),
+    discountedCount,
+    itemsSold,
     dailySales: [...dayBuckets.entries()].map(([date, total]) => ({
       date,
       total: round2(total),
     })),
-    categoryBreakdown: [...categoryMap.entries()].map(([category, total]) => ({
+    byCategory: [...categoryMap.entries()].map(([category, v]) => ({
       category,
-      total: round2(total),
+      total: round2(v.total),
+      qty: v.qty,
     })),
-    recentSales,
+    topCustomers: [...customerMap.values()]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5)
+      .map((c) => ({ ...c, total: round2(c.total) })),
+    lowStock,
+    slowMoving,
   };
 }
 

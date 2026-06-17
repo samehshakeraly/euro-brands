@@ -180,18 +180,79 @@ export interface SaleInput {
   delivery?: DeliveryInput | null; // بيانات التوصيل (اختيارية)
 }
 
-// إحصائيات لوحة التحكم
+// إحصائيات لوحة التحكم — موحّدة (الرئيسية + التقارير)
 export interface DashboardStats {
+  // القسم 1 — بطاقات سريعة
   todaySales: number;
   todaySalesCount: number;
+  yesterdaySales: number;
+  yesterdaySalesCount: number;
+  todayChangePct: number; // النسبة المئوية للتغيّر مقارنة بالأمس
   rangeSales: number;
   rangeSalesCount: number;
+  avgInvoice: number;
+  topDay: { date: string; total: number } | null;
+  remainingTotal: number; // إجمالي الرصيد المتبقي عند العملاء (كل الوقت)
+
+  // القسم 2 — رسوم بيانية
   branchComparison: { branch: BranchValue; total: number; count: number }[];
-  topProduct: { name: string; brand: string; quantity: number } | null;
-  lowStockCount: number;
+  weekComparison: {
+    thisWeek: { date: string; total: number }[]; // 7 أيام تنتهي باليوم
+    lastWeek: { date: string; total: number }[]; // 7 أيام تسبق الأسبوع الحالي
+  };
+  paymentBreakdown: {
+    key: "CASH" | "VISA" | "VODAFONE_CASH" | "INSTAPAY";
+    label: string;
+    total: number;
+    count: number;
+  }[];
+
+  // القسم 3 — جداول
+  topProducts: {
+    name: string;
+    brand: string;
+    qty: number;
+    revenue: number;
+    image: string | null;
+  }[];
+  topBrand: { brand: string; qty: number; revenue: number } | null;
+  newCustomersCount: number; // عملاء جدد في الفترة (لم يظهروا قبلها)
+
+  // القسم 4 — التوصيل
+  deliveryStats: {
+    deliveryCount: number;
+    pickupCount: number;
+    returnedCount: number;
+    returnedPct: number;
+  };
+
+  // حقول إضافية للتصدير (PDF/Excel)
+  grossSales: number;
+  discountTotal: number;
+  discountedCount: number;
+  itemsSold: number;
   dailySales: { date: string; total: number }[];
-  categoryBreakdown: { category: CategoryValue; total: number }[];
-  recentSales: SaleDTO[];
+  byCategory: { category: CategoryValue; total: number; qty: number }[];
+  topCustomers: {
+    name: string;
+    phone: string | null;
+    total: number;
+    count: number;
+  }[];
+  lowStock: {
+    id: string;
+    productName: string;
+    brand: string;
+    size: string;
+    branch: BranchValue;
+    quantity: number;
+  }[];
+  slowMoving: {
+    id: string;
+    name: string;
+    brand: string;
+    quantity: number;
+  }[];
 }
 
 // رؤية ذكية واحدة (من Gemini أو القواعد)

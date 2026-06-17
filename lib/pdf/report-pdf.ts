@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { format } from "date-fns";
 import { BRANCH_LABELS, CATEGORY_LABELS } from "@/lib/constants";
-import type { ReportsData } from "@/lib/types";
+import type { DashboardStats } from "@/lib/types";
 
 // عرض الأرقام والعملة بالعربية (المتصفح يرسمها بشكل صحيح داخل html2canvas)
 const num = (x: number) =>
@@ -42,7 +42,10 @@ function sectionTitle(t: string): string {
   return `<h2 style="font-size:15px;font-weight:800;color:#1a1d2e;margin:22px 0 4px;border-right:4px solid #6c63ff;padding-right:8px;">${t}</h2>`;
 }
 
-function buildReportHtml(data: ReportsData, range: { from: string; to: string }) {
+function buildReportHtml(
+  data: DashboardStats,
+  range: { from: string; to: string }
+) {
   const el = document.createElement("div");
   el.setAttribute("dir", "rtl");
   el.style.cssText =
@@ -72,11 +75,12 @@ function buildReportHtml(data: ReportsData, range: { from: string; to: string })
 
     ${sectionTitle("الملخّص")}
     <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
-      ${summaryCard("إجمالي المبيعات (الصافي)", money(data.totalSales), "#6c63ff")}
+      ${summaryCard("إجمالي المبيعات (الصافي)", money(data.rangeSales), "#6c63ff")}
       ${summaryCard("قبل الخصم", money(data.grossSales), "#6c63ff")}
-      ${summaryCard("عدد الفواتير", num(data.invoicesCount), "#3b9a6e")}
+      ${summaryCard("عدد الفواتير", num(data.rangeSalesCount), "#3b9a6e")}
       ${summaryCard("القطع المباعة", num(data.itemsSold), "#3b9a6e")}
       ${summaryCard("متوسط الفاتورة", money(data.avgInvoice), "#6c63ff")}
+      ${summaryCard("الرصيد المتبقي", money(data.remainingTotal), "#c9851a")}
     </div>
 
     ${sectionTitle("ملخّص الخصومات")}
@@ -89,7 +93,17 @@ function buildReportHtml(data: ReportsData, range: { from: string; to: string })
     ${sectionTitle("مقارنة الفروع")}
     ${table(
       ["الفرع", "عدد الفواتير", "الإجمالي"],
-      data.byBranch.map((b) => [BRANCH_LABELS[b.branch], num(b.count), money(b.total)])
+      data.branchComparison.map((b) => [
+        BRANCH_LABELS[b.branch],
+        num(b.count),
+        money(b.total),
+      ])
+    )}
+
+    ${sectionTitle("توزيع طرق الدفع")}
+    ${table(
+      ["الطريقة", "عدد الفواتير", "الإجمالي"],
+      data.paymentBreakdown.map((p) => [p.label, num(p.count), money(p.total)])
     )}
 
     ${
@@ -118,6 +132,26 @@ function buildReportHtml(data: ReportsData, range: { from: string; to: string })
         : `<p style="font-size:12px;color:#9295a8;">لا توجد مبيعات في الفترة.</p>`
     }
 
+    ${
+      data.topBrand
+        ? sectionTitle("أكثر براند مبيعاً") +
+          `<p style="font-size:13px;color:#1a1d2e;margin-top:8px;">
+            <strong>${data.topBrand.brand}</strong> · ${num(data.topBrand.qty)} قطعة · ${money(data.topBrand.revenue)}
+          </p>`
+        : ""
+    }
+
+    ${sectionTitle("إحصائيات التوصيل")}
+    ${table(
+      ["البيان", "القيمة"],
+      [
+        ["طلبات التوصيل", num(data.deliveryStats.deliveryCount)],
+        ["استلام من المحل", num(data.deliveryStats.pickupCount)],
+        ["مرتجعات", num(data.deliveryStats.returnedCount)],
+        ["نسبة المرتجعات", `${num(data.deliveryStats.returnedPct)}%`],
+      ]
+    )}
+
     ${sectionTitle("أصناف تحتاج تزويد")}
     ${
       data.lowStock.length
@@ -145,7 +179,7 @@ function buildReportHtml(data: ReportsData, range: { from: string; to: string })
 }
 
 export async function generateReportPdf(
-  data: ReportsData,
+  data: DashboardStats,
   range: { from: string; to: string }
 ) {
   const el = buildReportHtml(data, range);

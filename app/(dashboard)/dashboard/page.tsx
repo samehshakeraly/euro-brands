@@ -2,23 +2,35 @@
 
 import { useState } from "react";
 import {
-  ShoppingCart,
+  Banknote,
   TrendingUp,
+  TrendingDown,
+  Calculator,
+  Trophy,
+  CalendarDays,
+  Wallet,
+  Package,
   Award,
-  AlertTriangle,
+  UserPlus,
+  Truck,
+  Store,
+  RotateCcw,
+  FileDown,
+  FileSpreadsheet,
 } from "lucide-react";
+import toast from "react-hot-toast";
+import { format } from "date-fns";
 import { useFetch } from "@/lib/use-fetch";
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker";
 import { StatCard, Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { PageLoader } from "@/components/ui/spinner";
+import { PageLoader, Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SalesTable } from "@/components/sales-table";
-import { BranchBadge, StockBadge } from "@/components/ui/badge";
-import { SalesLineChart } from "@/components/charts/sales-line-chart";
-import { CategoryPieChart } from "@/components/charts/category-pie-chart";
-import type { DashboardStats, LowStockResponse } from "@/lib/types";
-import { BRANCH_LABELS } from "@/lib/constants";
+import { BranchBarChart } from "@/components/charts/branch-bar-chart";
+import { WeekComparisonChart } from "@/components/charts/week-comparison-chart";
+import { PaymentPieChart } from "@/components/charts/payment-pie-chart";
+import type { DashboardStats } from "@/lib/types";
+import { cn } from "@/lib/cn";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 export default function DashboardPage() {
@@ -29,18 +41,71 @@ export default function DashboardPage() {
       )}&to=${encodeURIComponent(range.to)}`
     : null;
   const { data, loading, error } = useFetch<DashboardStats>(url);
-  const { data: lowStock } = useFetch<LowStockResponse>("/api/low-stock");
+  const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+
+  async function exportPdf() {
+    if (!data || !range) return;
+    setExporting("pdf");
+    try {
+      const { generateReportPdf } = await import("@/lib/pdf/report-pdf");
+      await generateReportPdf(data, range);
+    } catch {
+      toast.error("تعذّر إنشاء ملف PDF");
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function exportExcel() {
+    if (!data || !range) return;
+    setExporting("excel");
+    try {
+      const { generateReportExcel } = await import("@/lib/excel-report");
+      await generateReportExcel(data, range);
+    } catch {
+      toast.error("تعذّر إنشاء ملف Excel");
+    } finally {
+      setExporting(null);
+    }
+  }
 
   return (
     <div>
       <PageHeader
-        title="الرئيسية"
-        description="نظرة عامة على أداء المبيعات والمخزون"
-        actions={<DateRangePicker onChange={setRange} />}
+        title="لوحة التحكم"
+        description="نظرة عامة على الأداء والمبيعات والمخزون"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangePicker onChange={setRange} />
+            <button
+              onClick={exportExcel}
+              disabled={!data || exporting !== null}
+              className="btn btn-secondary"
+            >
+              {exporting === "excel" ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4" />
+              )}
+              تصدير Excel
+            </button>
+            <button
+              onClick={exportPdf}
+              disabled={!data || exporting !== null}
+              className="btn btn-secondary"
+            >
+              {exporting === "pdf" ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              تصدير PDF
+            </button>
+          </div>
+        }
       />
 
       {loading && <PageLoader />}
-
       {error && (
         <Card className="p-6 text-center text-danger">
           تعذّر تحميل البيانات: {error}
@@ -49,162 +114,289 @@ export default function DashboardPage() {
 
       {data && !loading && (
         <div className="space-y-6">
-          {/* البطاقات */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* القسم 1 — بطاقات سريعة */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <TodayVsYesterdayCard data={data} />
             <StatCard
               tone="accent"
-              title="مبيعات اليوم"
-              value={formatCurrency(data.todaySales)}
-              subtitle={`${formatNumber(data.todaySalesCount)} فاتورة`}
-              icon={<ShoppingCart className="h-5 w-5" />}
+              title="مبيعات الفترة"
+              value={formatCurrency(data.rangeSales)}
+              subtitle={`${formatNumber(data.rangeSalesCount)} فاتورة`}
+              icon={<Banknote className="h-5 w-5" />}
             />
             <StatCard
               tone="accent"
-              title="مبيعات الفترة المحددة"
-              value={formatCurrency(data.rangeSales)}
-              subtitle={`${formatNumber(data.rangeSalesCount)} فاتورة`}
-              icon={<TrendingUp className="h-5 w-5" />}
+              title="متوسط قيمة الفاتورة"
+              value={formatCurrency(data.avgInvoice)}
+              subtitle={`${formatNumber(data.itemsSold)} قطعة مباعة`}
+              icon={<Calculator className="h-5 w-5" />}
             />
             <StatCard
               tone="success"
-              title="أكثر منتج مبيعاً"
+              title="أعلى يوم مبيعات"
               value={
-                data.topProduct ? (
-                  <span className="text-lg">{data.topProduct.name}</span>
+                data.topDay ? (
+                  <span className="text-lg">
+                    {formatCurrency(data.topDay.total)}
+                  </span>
                 ) : (
                   "—"
                 )
               }
               subtitle={
-                data.topProduct
-                  ? `${formatNumber(data.topProduct.quantity)} قطعة مباعة`
+                data.topDay
+                  ? format(new Date(data.topDay.date), "yyyy/MM/dd")
                   : "لا توجد مبيعات في الفترة"
               }
-              icon={<Award className="h-5 w-5" />}
+              icon={<CalendarDays className="h-5 w-5" />}
             />
             <StatCard
               tone="warning"
-              title="أصناف تحتاج تزويد"
-              value={formatNumber(lowStock?.count ?? data.lowStockCount)}
-              subtitle="الكمية ≤ الحد الأدنى"
-              icon={<AlertTriangle className="h-5 w-5" />}
+              title="رصيد متبقي عند العملاء"
+              value={formatCurrency(data.remainingTotal)}
+              subtitle="إجمالي المتبقي (كل الوقت)"
+              icon={<Wallet className="h-5 w-5" />}
             />
           </div>
 
-          {/* تنبيه قلة المخزون */}
-          {lowStock && lowStock.count > 0 && (
-            <Card className="p-5" tone="warning">
-              <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-text">
-                <AlertTriangle className="h-5 w-5 text-warning" />
-                تنبيه قلة المخزون
-                <span className="badge bg-[rgba(201,133,26,0.14)] text-warning nums">
-                  {formatNumber(lowStock.count)}
-                </span>
-              </h2>
-              <div className="max-h-72 space-y-2 overflow-y-auto">
-                {lowStock.items.slice(0, 30).map((it) => (
-                  <div
-                    key={it.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-text">
-                        {it.productName}
-                        <span className="mr-1 text-xs text-muted">
-                          ({it.brand})
-                        </span>
-                      </p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <BranchBadge branch={it.branch} />
-                        <span className="badge bg-[var(--surface-2)] text-muted nums">
-                          مقاس {it.size}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted nums">
-                        الحد الأدنى: {formatNumber(it.minQuantity)}
-                      </span>
-                      <StockBadge quantity={it.quantity} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* الرسوم البيانية */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card className="p-5 lg:col-span-2">
-              <h2 className="mb-4 text-base font-bold text-text">
-                المبيعات اليومية
-              </h2>
-              <SalesLineChart data={data.dailySales} />
-            </Card>
+          {/* القسم 2 — رسوم بيانية */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card className="p-5">
               <h2 className="mb-4 text-base font-bold text-text">
-                توزيع المبيعات حسب الفئة
+                مقارنة مبيعات الفروع
               </h2>
-              <CategoryPieChart data={data.categoryBreakdown} />
+              <BranchBarChart data={data.branchComparison} />
+            </Card>
+            <Card className="p-5">
+              <h2 className="mb-1 text-base font-bold text-text">
+                الأسبوع الحالي مقارنة بالأسبوع السابق
+              </h2>
+              <p className="mb-3 text-xs text-muted">
+                المبيعات اليومية لآخر 7 أيام مقابل الأسبوع الذي قبله
+              </p>
+              <WeekComparisonChart
+                thisWeek={data.weekComparison.thisWeek}
+                lastWeek={data.weekComparison.lastWeek}
+              />
             </Card>
           </div>
 
-          {/* مقارنة الفرعين + أحدث الفواتير */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card className="p-5">
-              <h2 className="mb-4 text-base font-bold text-text">
-                مقارنة مبيعات الفرعين
-              </h2>
-              <BranchComparison data={data.branchComparison} />
-            </Card>
+          <Card className="p-5">
+            <h2 className="mb-4 text-base font-bold text-text">
+              توزيع طرق الدفع
+            </h2>
+            <PaymentPieChart data={data.paymentBreakdown} />
+          </Card>
 
+          {/* القسم 3 — جداول */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <Card className="p-5 lg:col-span-2">
-              <h2 className="mb-4 text-base font-bold text-text">
-                أحدث الفواتير
+              <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-text">
+                <Trophy className="h-5 w-5 text-success" />
+                أكثر 5 منتجات مبيعاً
               </h2>
-              {data.recentSales.length === 0 ? (
+              {data.topProducts.length === 0 ? (
                 <EmptyState
-                  title="لا توجد فواتير بعد"
-                  description="ستظهر هنا أحدث عمليات البيع فور تسجيلها."
+                  title="لا توجد مبيعات"
+                  description="لم تُسجّل مبيعات في هذه الفترة."
                 />
               ) : (
-                <SalesTable sales={data.recentSales} />
+                <div className="space-y-2">
+                  {data.topProducts.map((p, i) => (
+                    <div
+                      key={`${p.name}-${i}`}
+                      className="flex items-center gap-3 rounded-lg border p-2.5"
+                    >
+                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--surface-2)]">
+                        {p.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.image}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-muted">
+                            <Package className="h-5 w-5" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-text">
+                          {p.name}
+                        </p>
+                        <p className="text-xs text-muted">{p.brand}</p>
+                      </div>
+                      <div className="shrink-0 text-left">
+                        <p className="font-bold text-text nums">
+                          {formatNumber(p.qty)} قطعة
+                        </p>
+                        <p className="text-xs text-muted nums">
+                          {formatCurrency(p.revenue)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </Card>
+
+            <div className="space-y-6">
+              <Card className="p-5" tone="success">
+                <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-text">
+                  <Award className="h-5 w-5 text-success" />
+                  أكثر براند مبيعاً
+                </h2>
+                {data.topBrand ? (
+                  <div>
+                    <p className="text-2xl font-extrabold text-text">
+                      {data.topBrand.brand}
+                    </p>
+                    <p className="mt-2 text-sm text-muted nums">
+                      {formatNumber(data.topBrand.qty)} قطعة مباعة
+                    </p>
+                    <p className="text-sm font-bold text-text nums">
+                      {formatCurrency(data.topBrand.revenue)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted">
+                    لا توجد مبيعات في هذه الفترة
+                  </p>
+                )}
+              </Card>
+
+              <Card className="p-5" tone="accent">
+                <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-text">
+                  <UserPlus className="h-5 w-5 text-accent" />
+                  عملاء جدد في الفترة
+                </h2>
+                <p className="text-3xl font-extrabold text-accent nums">
+                  {formatNumber(data.newCustomersCount)}
+                </p>
+                <p className="mt-2 text-xs text-muted">
+                  عملاء لم يظهروا في فواتير سابقة قبل هذه الفترة
+                </p>
+              </Card>
+            </div>
           </div>
+
+          {/* القسم 4 — إحصائيات التوصيل */}
+          <Card className="p-5">
+            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-text">
+              <Truck className="h-5 w-5 text-accent" />
+              إحصائيات التوصيل
+            </h2>
+            <DeliveryStats stats={data.deliveryStats} />
+          </Card>
         </div>
       )}
     </div>
   );
 }
 
-function BranchComparison({
-  data,
-}: {
-  data: DashboardStats["branchComparison"];
-}) {
-  const max = Math.max(...data.map((b) => b.total), 1);
+function TodayVsYesterdayCard({ data }: { data: DashboardStats }) {
+  const up = data.todayChangePct >= 0;
   return (
-    <div className="space-y-5">
-      {data.map((b) => (
-        <div key={b.branch}>
-          <div className="mb-1.5 flex items-center justify-between text-sm">
-            <span className="font-medium text-text">
-              {BRANCH_LABELS[b.branch]}
-            </span>
-            <span className="text-muted nums">{b.count} فاتورة</span>
-          </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
-            <div
-              className="h-full rounded-full bg-accent transition-all"
-              style={{ width: `${(b.total / max) * 100}%` }}
-            />
-          </div>
-          <p className="mt-1.5 text-sm font-bold text-text nums">
-            {formatCurrency(b.total)}
+    <Card className="p-5" tone="accent">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm text-muted">مبيعات اليوم</p>
+          <p className="mt-1 text-2xl font-extrabold text-text nums">
+            {formatCurrency(data.todaySales)}
+          </p>
+          <p className="mt-0.5 text-xs text-muted nums">
+            {formatNumber(data.todaySalesCount)} فاتورة
           </p>
         </div>
-      ))}
+        <div
+          className={cn(
+            "flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold nums",
+            up
+              ? "bg-[rgba(59,154,110,0.14)] text-success"
+              : "bg-[rgba(217,83,79,0.14)] text-danger"
+          )}
+        >
+          {up ? (
+            <TrendingUp className="h-3.5 w-3.5" />
+          ) : (
+            <TrendingDown className="h-3.5 w-3.5" />
+          )}
+          {formatNumber(Math.abs(Math.round(data.todayChangePct)))}%
+        </div>
+      </div>
+      <div className="mt-3 border-t pt-2 text-xs text-muted nums">
+        أمس: {formatCurrency(data.yesterdaySales)} ·{" "}
+        {formatNumber(data.yesterdaySalesCount)} فاتورة
+      </div>
+    </Card>
+  );
+}
+
+function DeliveryStats({
+  stats,
+}: {
+  stats: DashboardStats["deliveryStats"];
+}) {
+  const total = stats.deliveryCount + stats.pickupCount;
+  const deliveryPct =
+    total > 0 ? Math.round((stats.deliveryCount / total) * 100) : 0;
+  const pickupPct = total > 0 ? 100 - deliveryPct : 0;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="rounded-lg border p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm text-muted">
+          <Truck className="h-4 w-4" />
+          طلبات التوصيل
+        </div>
+        <p className="text-2xl font-extrabold text-text nums">
+          {formatNumber(stats.deliveryCount)}
+        </p>
+        <p className="mt-1 text-xs text-muted nums">{deliveryPct}% من الطلبات</p>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+          <div
+            className="h-full rounded-full bg-accent"
+            style={{ width: `${deliveryPct}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm text-muted">
+          <Store className="h-4 w-4" />
+          الاستلام من المحل
+        </div>
+        <p className="text-2xl font-extrabold text-text nums">
+          {formatNumber(stats.pickupCount)}
+        </p>
+        <p className="mt-1 text-xs text-muted nums">{pickupPct}% من الطلبات</p>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+          <div
+            className="h-full rounded-full bg-success"
+            style={{ width: `${pickupPct}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm text-muted">
+          <RotateCcw className="h-4 w-4" />
+          نسبة المرتجعات
+        </div>
+        <p className="text-2xl font-extrabold text-text nums">
+          {formatNumber(stats.returnedPct)}%
+        </p>
+        <p className="mt-1 text-xs text-muted nums">
+          {formatNumber(stats.returnedCount)} من {formatNumber(stats.deliveryCount)} طلب توصيل
+        </p>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+          <div
+            className="h-full rounded-full bg-warning"
+            style={{ width: `${Math.min(stats.returnedPct, 100)}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
