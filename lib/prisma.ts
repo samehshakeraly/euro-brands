@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { poolerSafeUrl } from "./db-url";
 
 // نمط Singleton لتجنب إنشاء اتصالات متعددة أثناء التطوير (Hot Reload)
 const globalForPrisma = globalThis as unknown as {
@@ -6,7 +7,10 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createClient(): PrismaClient {
+  // يضمن pgbouncer=true تلقائياً عند الاتصال عبر pooler المعاملات (Supabase)
+  const url = poolerSafeUrl(process.env.DATABASE_URL);
   return new PrismaClient({
+    ...(url ? { datasources: { db: { url } } } : {}),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }
