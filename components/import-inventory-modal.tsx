@@ -28,10 +28,10 @@ import { formatNumber } from "@/lib/format";
 import type { ImportResult, ImportRow, ProductDTO } from "@/lib/types";
 
 const HEADERS = [
+  "اسم المنتج",
+  "البراند",
   "الفئة",
   "النوع",
-  "البراند",
-  "المنتج",
   "اللون",
   "المقاس",
   "الفرع",
@@ -106,7 +106,8 @@ export function ImportInventoryModal({
   }
 
   function buildRow(obj: Record<string, unknown>): PreviewRow {
-    const name = norm(pick(obj, "المنتج"));
+    // يدعم التسميتين «اسم المنتج» (القالب الجديد) و«المنتج» (ملفات قديمة)
+    const name = norm(pick(obj, "اسم المنتج") || pick(obj, "المنتج"));
     const brand = norm(pick(obj, "البراند"));
     const categoryLabel = norm(pick(obj, "الفئة"));
     const typeLabel = norm(pick(obj, "النوع"));
@@ -179,48 +180,42 @@ export function ImportInventoryModal({
     try {
       const XLSX = await import("xlsx");
 
-      const sampleRows = [
-        ["ملابس", "تيشرت", "Nike", "تيشرت Air Max", "أسود", "M", "حدائق المعادي", 20, 350, "NIK-TSHIRT-BLK-M-HAD"],
-        ["أحذية", "سنيكرز", "Nike", "حذاء Air Force", "أبيض", "42", "زهراء المعادي", 8, 1450, "NIK-SNK-WHT-42-ZAH"],
-        ["عطور", "عطر رجالي", "Lattafa", "عطر شرقي فاخر", "", "100ml", "حدائق المعادي", 15, 600, "LAT-MEN-DEF-100ML-HAD"],
-      ];
+      // صف العناوين فقط — بدون أي بيانات تجريبية
+      const ws = XLSX.utils.aoa_to_sheet([HEADERS]);
 
-      const aoa = [HEADERS, ...sampleRows];
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-
+      // عرض كل عمود بحسب نوع البيانات
+      // ترتيب الأعمدة: اسم المنتج، البراند، الفئة، النوع، اللون، المقاس،
+      // الفرع، الكمية، السعر، الكود (SKU)
       ws["!cols"] = [
+        { wch: 26 }, // اسم المنتج
+        { wch: 16 }, // البراند
         { wch: 12 }, // الفئة
         { wch: 14 }, // النوع
-        { wch: 14 }, // البراند
-        { wch: 24 }, // المنتج
         { wch: 10 }, // اللون
         { wch: 8 }, // المقاس
         { wch: 16 }, // الفرع
         { wch: 8 }, // الكمية
         { wch: 10 }, // السعر
-        { wch: 26 }, // الكود
+        { wch: 26 }, // الكود (SKU)
       ];
 
+      // تجميد صف العناوين عند فتح الملف
+      (ws as Record<string, unknown>)["!view"] = {
+        state: "frozen",
+        ySplit: 1,
+        topLeftCell: "A2",
+        activePane: "bottomLeft",
+      };
+
       // قوائم منسدلة (Data Validation) — حتى الصف 1000
+      // C=الفئة، E=اللون، G=الفرع
       const categoryList = CATEGORIES.map((c) => CATEGORY_LABELS[c]).join(",");
       const branchList = BRANCHES.map((b) => BRANCH_LABELS[b]).join(",");
       const colorList = COLORS.map((c) => c.name).join(",");
       ws["!dataValidation"] = [
-        {
-          sqref: "A2:A1000",
-          t: "List",
-          f: `"${categoryList}"`,
-        },
-        {
-          sqref: "G2:G1000",
-          t: "List",
-          f: `"${branchList}"`,
-        },
-        {
-          sqref: "E2:E1000",
-          t: "List",
-          f: `"${colorList}"`,
-        },
+        { sqref: "C2:C1000", t: "List", f: `"${categoryList}"` },
+        { sqref: "E2:E1000", t: "List", f: `"${colorList}"` },
+        { sqref: "G2:G1000", t: "List", f: `"${branchList}"` },
       ];
 
       const wb = XLSX.utils.book_new();
@@ -314,9 +309,9 @@ export function ImportInventoryModal({
       {!preview ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            نزّل القالب بالأعمدة: الفئة، النوع، البراند، المنتج، اللون، المقاس،
-            الفرع، الكمية، السعر، الكود (SKU). الصفوف المطابقة تُحدَّث،
-            والجديدة تُضاف تلقائياً.
+            نزّل القالب بالأعمدة: اسم المنتج، البراند، الفئة، النوع، اللون،
+            المقاس، الفرع، الكمية، السعر، الكود (SKU). الصفوف المطابقة
+            تُحدَّث، والجديدة تُضاف تلقائياً.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
