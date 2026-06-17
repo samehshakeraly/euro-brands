@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <symbol id="s" overflow="visible">
+      <polygon fill="#f5c517" points="0,-8 2.4,-2.5 8,-2.5 3.5,1 5,7 0,3.5 -5,7 -3.5,1 -8,-2.5 -2.4,-2.5"/>
+    </symbol>
+  </defs>
+  <!-- Dark navy disk -->
+  <circle cx="100" cy="100" r="98" fill="#1d2b5c"/>
+  <!-- Inner white ring -->
+  <circle cx="100" cy="100" r="91" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+  <!-- 12 yellow stars in a circle -->
+  <use href="#s" x="100" y="30"/>
+  <use href="#s" x="135" y="39.4"/>
+  <use href="#s" x="160.6" y="65"/>
+  <use href="#s" x="170" y="100"/>
+  <use href="#s" x="160.6" y="135"/>
+  <use href="#s" x="135" y="160.6"/>
+  <use href="#s" x="100" y="170"/>
+  <use href="#s" x="64.4" y="160.6"/>
+  <use href="#s" x="39.4" y="135"/>
+  <use href="#s" x="30" y="100"/>
+  <use href="#s" x="39.4" y="65"/>
+  <use href="#s" x="64.4" y="39.4"/>
+  <!-- Cursive yellow "E" centered -->
+  <text x="100" y="138" font-family="'Brush Script MT','Lucida Handwriting','Snell Roundhand',cursive" font-size="130" font-weight="700" font-style="italic" fill="#f5c517" text-anchor="middle">E</text>
+</svg>

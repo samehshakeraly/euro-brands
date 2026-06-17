@@ -12,12 +12,14 @@ import {
   ReceiptText,
   Sparkles,
   Truck,
+  Settings,
   Menu,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { apiGet } from "@/lib/client";
 import type { LowStockResponse } from "@/lib/types";
+import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 
 const NAV_ITEMS = [
@@ -29,6 +31,7 @@ const NAV_ITEMS = [
   { href: "/insights", label: "الذكاء", icon: Sparkles },
   { href: "/delivery", label: "الطلبات", icon: Truck },
   { href: "/sales", label: "سجل الفواتير", icon: ReceiptText },
+  { href: "/settings", label: "الإعدادات", icon: Settings },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -54,9 +57,7 @@ export function TopNav() {
         {/* الشعار + الروابط (يمين في RTL) */}
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-base font-extrabold text-white">
-              EB
-            </span>
+            <Logo size={36} className="rounded-full" />
             <span className="hidden text-lg font-extrabold tracking-tight text-text sm:block">
               Euro Brands
             </span>
