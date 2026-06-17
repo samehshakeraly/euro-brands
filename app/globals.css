@@ -127,23 +127,59 @@
   }
 }
 
-/* أنماط الطباعة — إخفاء العناصر غير الضرورية في الفاتورة المطبوعة */
+/* ============================================
+   أنماط الطباعة — فاتورة نظيفة أبيض/أسود بخط Tajawal بالاتجاه RTL
+   ============================================ */
 @media print {
+  /* إخفاء الشريط العلوي وأي عنصر مُعلَّم بـ no-print */
   header,
   .no-print {
     display: none !important;
   }
+
+  /* خلفية بيضاء ونصّ أسود مع الحفاظ على خط Tajawal واتجاه RTL */
+  html,
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    font-family: var(--font-tajawal), "Tajawal", sans-serif !important;
+    direction: rtl;
   }
-  .card {
+
+  /* تجريد كل العناصر من الألوان والظلال — طباعة أحادية اللون */
+  *,
+  *::before,
+  *::after {
+    color: #000000 !important;
+    background: transparent !important;
+    background-color: transparent !important;
     box-shadow: none !important;
-    border-color: #ddd !important;
+    text-shadow: none !important;
+    border-color: #000000 !important;
+  }
+
+  .card {
+    border-radius: 0 !important;
+  }
+  .card-accent,
+  .card-success,
+  .card-warning {
+    border-top: 1px solid #000000 !important;
+  }
+  .badge {
+    border: 1px solid #000000 !important;
+    border-radius: 0 !important;
+    padding: 0 6px !important;
+  }
+
+  /* مقاس الورق وهوامش معقولة */
+  @page {
+    size: A4;
+    margin: 1.2cm;
   }
 }
 
-/* طباعة إيصال البيع فقط (عند فتح نافذة الإيصال) */
+/* عند فتح نافذة الإيصال — اطبع الإيصال فقط بدون خلفية أو أزرار النافذة */
 @media print {
   body.receipt-open * {
     visibility: hidden;
@@ -152,9 +188,27 @@
   body.receipt-open .print-receipt * {
     visibility: visible;
   }
+
+  /* تسطيح حاوية النافذة المنبثقة حتى لا يحبس الإيصال داخل صندوق ثابت */
+  body.receipt-open .fixed.inset-0 {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+  }
+  body.receipt-open .fixed.inset-0 > .card {
+    position: static !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+  }
+
+  /* ثبّت الإيصال في أعلى الصفحة حتى لا تتولّد صفحات فارغة */
   body.receipt-open .print-receipt {
     position: absolute;
-    inset: 0 0 auto 0;
-    padding: 16px;
+    top: 0;
+    right: 0;
+    left: 0;
+    padding: 0;
   }
 }
