@@ -3,6 +3,7 @@ import {
   type Branch,
   type DeliveryMethod,
   type DiscountType,
+  type OrderSource,
   type PaymentMethod,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -187,7 +188,9 @@ export async function POST(req: Request) {
               paidAmount: round2(paidAmount),
               remainingAmount,
               isDelivery: !!input.delivery,
-              orderSource: input.delivery?.orderSource ?? null,
+              orderSource:
+                (input.delivery?.orderSource as OrderSource | undefined) ??
+                null,
               deliveryMethod:
                 (input.delivery?.deliveryMethod as DeliveryMethod | undefined) ??
                 null,

@@ -1,4 +1,10 @@
-import { Prisma, type Branch, type DeliveryMethod, type DeliveryStatus } from "@prisma/client";
+import {
+  Prisma,
+  type Branch,
+  type DeliveryMethod,
+  type DeliveryStatus,
+  type OrderSource,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, handleServerError } from "@/lib/api";
 import { toSaleDTO } from "@/lib/serializers";
@@ -23,7 +29,7 @@ export async function GET(req: Request) {
     if (branch) where.branch = branch as Branch;
     if (status) where.deliveryStatus = status as DeliveryStatus;
     if (methodParam) where.deliveryMethod = methodParam as DeliveryMethod;
-    if (source) where.orderSource = source;
+    if (source) where.orderSource = source as OrderSource;
     if (from || to) {
       where.createdAt = {};
       if (from) where.createdAt.gte = new Date(from);

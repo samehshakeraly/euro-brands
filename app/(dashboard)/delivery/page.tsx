@@ -25,11 +25,12 @@ import { cn } from "@/lib/cn";
 import {
   BRANCHES,
   BRANCH_LABELS,
-  DEFAULT_ORDER_SOURCES,
   DELIVERY_METHODS,
   DELIVERY_METHOD_LABELS,
   DELIVERY_STATUSES,
   DELIVERY_STATUS_LABELS,
+  ORDER_SOURCES,
+  ORDER_SOURCE_LABELS,
   type DeliveryStatusValue,
 } from "@/lib/constants";
 import {
@@ -81,17 +82,6 @@ export default function DeliveryPage() {
 
   const { data, loading, error, refetch } = useFetch<SaleDTO[]>(url);
   const orders = data ?? [];
-
-  // مصادر مخصّصة من POS (للفلتر)
-  const [customSources, setCustomSources] = useState<string[]>([]);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("eb-custom-sources");
-      setCustomSources(raw ? JSON.parse(raw) : []);
-    } catch {
-      setCustomSources([]);
-    }
-  }, []);
 
   const summary = useMemo(() => {
     const total = orders.length;
@@ -187,14 +177,9 @@ export default function DeliveryPage() {
             onChange={(e) => setSource(e.target.value)}
           >
             <option value="">كل مصادر الطلب</option>
-            {DEFAULT_ORDER_SOURCES.map((s) => (
+            {ORDER_SOURCES.map((s) => (
               <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-            {customSources.map((s) => (
-              <option key={s} value={s}>
-                {s}
+                {ORDER_SOURCE_LABELS[s]}
               </option>
             ))}
           </select>
@@ -323,7 +308,7 @@ function OrderCard({
             </span>
             {order.orderSource && (
               <span className="badge bg-[var(--surface-2)] text-muted">
-                {order.orderSource}
+                {ORDER_SOURCE_LABELS[order.orderSource]}
               </span>
             )}
             {order.deliveryMethod && (

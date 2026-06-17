@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/modal";
 import { BranchBadge } from "@/components/ui/badge";
 import {
   BRANCH_LABELS,
+  ORDER_SOURCE_LABELS,
   PAYMENT_METHOD_LABELS,
   TRANSFER_METHOD_LABELS,
 } from "@/lib/constants";
@@ -185,7 +186,9 @@ export function ReceiptModal({
           <div className="mt-3 rounded-lg border bg-accent-soft p-3 text-sm">
             <p className="mb-1 font-bold text-accent">📦 طلب توصيل</p>
             {sale.orderSource && (
-              <p className="text-xs text-muted">المصدر: {sale.orderSource}</p>
+              <p className="text-xs text-muted">
+                المصدر: {ORDER_SOURCE_LABELS[sale.orderSource]}
+              </p>
             )}
             {sale.deliveryAddress && (
               <p className="text-xs text-text">

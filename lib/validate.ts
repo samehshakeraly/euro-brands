@@ -4,12 +4,14 @@ import {
   DELIVERY_METHODS,
   DELIVERY_STATUSES,
   DISCOUNT_TYPES,
+  ORDER_SOURCES,
   PAYMENT_METHODS,
   TRANSFER_METHODS,
   type BranchValue,
   type CategoryValue,
   type DeliveryMethodValue,
   type DeliveryStatusValue,
+  type OrderSourceValue,
   type PaymentMethodValue,
   type TransferMethodValue,
 } from "./constants";
@@ -224,13 +226,14 @@ export function parseDeliveryInput(body: any): DeliveryInput {
   const orderSource = asString(body?.orderSource);
   const deliveryMethod = asString(body?.deliveryMethod);
   const deliveryAddress = asString(body?.deliveryAddress);
-  if (!orderSource) throw new ValidationError("مصدر الطلب مطلوب");
+  if (!ORDER_SOURCES.includes(orderSource as OrderSourceValue))
+    throw new ValidationError("مصدر الطلب غير صحيح");
   if (!DELIVERY_METHODS.includes(deliveryMethod as DeliveryMethodValue))
     throw new ValidationError("طريقة التوصيل غير صحيحة");
   if (!deliveryAddress) throw new ValidationError("عنوان التوصيل مطلوب");
 
   return {
-    orderSource: orderSource.slice(0, 50),
+    orderSource: orderSource as OrderSourceValue,
     deliveryMethod: deliveryMethod as DeliveryMethodValue,
     deliveryAddress,
     addressNotes: asString(body?.addressNotes) || null,

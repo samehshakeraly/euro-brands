@@ -4,6 +4,7 @@ import type {
   DeliveryMethodValue,
   DeliveryStatusValue,
   DiscountTypeValue,
+  OrderSourceValue,
   PaymentMethodValue,
   TransferMethodValue,
   SaleStatusValue,
@@ -100,7 +101,7 @@ export interface SaleDTO {
   status: SaleStatusValue;
   cancellationReason: string | null;
   isDelivery: boolean;
-  orderSource: string | null;
+  orderSource: OrderSourceValue | null;
   deliveryMethod: DeliveryMethodValue | null;
   deliveryAddress: string | null;
   addressNotes: string | null;
@@ -112,7 +113,7 @@ export interface SaleDTO {
 }
 
 export interface DeliveryInput {
-  orderSource: string;
+  orderSource: OrderSourceValue;
   deliveryMethod: DeliveryMethodValue;
   deliveryAddress: string;
   addressNotes?: string | null;

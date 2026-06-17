@@ -80,14 +80,23 @@ export const DELIVERY_STATUS_LABELS: Record<DeliveryStatusValue, string> = {
   RETURNED: "مرتجع",
 };
 
-// مصادر الطلب الافتراضية (قابلة للإضافة في الواجهة)
-export const DEFAULT_ORDER_SOURCES = [
-  "تليفون",
-  "فيسبوك",
-  "انستجرام",
-  "واتساب",
-  "ماسنجر",
+// مصادر طلب التوصيل — قيم enum ثابتة (الواجهة تعرض التسميات العربية فقط)
+export const ORDER_SOURCES = [
+  "PHONE",
+  "FACEBOOK",
+  "INSTAGRAM",
+  "WHATSAPP",
+  "MESSENGER",
 ] as const;
+export type OrderSourceValue = (typeof ORDER_SOURCES)[number];
+
+export const ORDER_SOURCE_LABELS: Record<OrderSourceValue, string> = {
+  PHONE: "تليفون",
+  FACEBOOK: "فيسبوك",
+  INSTAGRAM: "انستجرام",
+  WHATSAPP: "واتساب",
+  MESSENGER: "ماسنجر",
+};
 
 // المقاسات المتاحة حسب الفئة
 export const CLOTHING_SIZES = [

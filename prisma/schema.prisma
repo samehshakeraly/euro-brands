@@ -49,6 +49,14 @@ enum DeliveryMethod {
   BOSTA
 }
 
+enum OrderSource {
+  PHONE // تليفون
+  FACEBOOK // فيسبوك
+  INSTAGRAM // انستجرام
+  WHATSAPP // واتساب
+  MESSENGER // ماسنجر
+}
+
 enum DeliveryStatus {
   NEW // جديد
   PREPARING // قيد التجهيز
@@ -135,7 +143,7 @@ model Sale {
   cancellationReason String? // سبب الإلغاء
 
   isDelivery       Boolean         @default(false)
-  orderSource      String? // مصدر الطلب (تليفون/فيسبوك/...)
+  orderSource      OrderSource? // مصدر الطلب
   deliveryMethod   DeliveryMethod?
   deliveryAddress  String?
   addressNotes     String?

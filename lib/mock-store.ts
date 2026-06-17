@@ -15,6 +15,7 @@ import {
   type DeliveryMethodValue,
   type DeliveryStatusValue,
   type DiscountTypeValue,
+  type OrderSourceValue,
   type PaymentMethodValue,
   type TransferMethodValue,
   type SaleStatusValue,
@@ -94,7 +95,7 @@ interface MSale {
   status: SaleStatusValue;
   cancellationReason: string | null;
   isDelivery: boolean;
-  orderSource: string | null;
+  orderSource: OrderSourceValue | null;
   deliveryMethod: DeliveryMethodValue | null;
   deliveryAddress: string | null;
   addressNotes: string | null;
@@ -409,7 +410,13 @@ function buildStore(): Store {
 
     // ~25% منها طلبات توصيل بحالات متفاوتة
     const isDelivery = rng() < 0.25;
-    const sources = ["تليفون", "فيسبوك", "انستجرام", "واتساب", "ماسنجر"];
+    const sources: OrderSourceValue[] = [
+      "PHONE",
+      "FACEBOOK",
+      "INSTAGRAM",
+      "WHATSAPP",
+      "MESSENGER",
+    ];
     const addresses = [
       "شارع 9، حدائق المعادي",
       "شارع 200، زهراء المعادي",
@@ -427,7 +434,7 @@ function buildStore(): Store {
       "RETURNED",
     ];
 
-    let orderSource: string | null = null;
+    let orderSource: OrderSourceValue | null = null;
     let deliveryMethod: DeliveryMethodValue | null = null;
     let deliveryAddress: string | null = null;
     let trackingNumber: string | null = null;
