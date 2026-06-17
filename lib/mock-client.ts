@@ -8,6 +8,8 @@ import {
   mockUpdateProduct,
   mockDeleteProduct,
   mockImportInventory,
+  mockListBrands,
+  mockCreateBrand,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -16,6 +18,7 @@ import {
   mockUploadUrl,
 } from "./mock-store";
 import {
+  parseBrandInput,
   parseImportRows,
   parseProductInput,
   parseSaleInput,
@@ -69,6 +72,12 @@ export async function mockApi<T>(
       if (!res.ok) throw new Error(res.error);
       return { success: true } as T;
     }
+  }
+
+  // /api/brands
+  if (path === "/api/brands") {
+    if (method === "GET") return mockListBrands(sp.get("category")) as T;
+    if (method === "POST") return mockCreateBrand(parseBrandInput(body)) as T;
   }
 
   // /api/sales

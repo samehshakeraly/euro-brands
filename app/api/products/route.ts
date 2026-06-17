@@ -17,6 +17,7 @@ export async function GET(req: Request) {
     const category = searchParams.get("category");
     const brand = searchParams.get("brand");
     const size = searchParams.get("size");
+    const withSales = searchParams.get("withSales") === "1";
 
     const where: Prisma.ProductWhereInput = {};
 
@@ -26,6 +27,8 @@ export async function GET(req: Request) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
         { brand: { contains: search, mode: "insensitive" } },
+        { sku: { contains: search, mode: "insensitive" } },
+        { barcode: { contains: search } },
       ];
     }
 
@@ -50,7 +53,20 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    return ok(products.map(toProductDTO));
+    let soldMap: Map<string, number> | null = null;
+    if (withSales) {
+      const grouped = await prisma.saleItem.groupBy({
+        by: ["productId"],
+        _sum: { quantity: true },
+      });
+      soldMap = new Map(grouped.map((g) => [g.productId, g._sum.quantity ?? 0]));
+    }
+
+    return ok(
+      products.map((p) =>
+        toProductDTO(p, soldMap ? soldMap.get(p.id) ?? 0 : undefined)
+      )
+    );
   } catch (error) {
     return handleServerError(error);
   }
@@ -70,17 +86,32 @@ export async function POST(req: Request) {
         brand: input.brand,
         category: input.category as Category,
         description: input.description,
+        sku: input.sku ?? null,
+        barcode: input.barcode ?? null,
         images: input.images,
         variants: {
           create: input.variants.map((v) => ({
             size: v.size,
             branch: v.branch as Branch,
             quantity: v.quantity,
+            minQuantity: v.minQuantity,
             price: v.price,
           })),
         },
       },
       include: { variants: true },
+    });
+
+    // تسجيل البراند ضمن سجل البراندات للفئة
+    await prisma.brand.upsert({
+      where: {
+        name_category: {
+          name: input.brand,
+          category: input.category as Category,
+        },
+      },
+      update: {},
+      create: { name: input.brand, category: input.category as Category },
     });
 
     return ok(toProductDTO(product), 201);

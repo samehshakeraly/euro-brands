@@ -15,6 +15,7 @@ export async function runSeed(
   await prisma.sale.deleteMany();
   await prisma.productVariant.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.brand.deleteMany();
 
   const products = [
     {
@@ -99,6 +100,17 @@ export async function runSeed(
     const { variants, ...productData } = p;
     await prisma.product.create({
       data: { ...productData, variants: { create: variants } },
+    });
+  }
+
+  // سجل البراندات لكل فئة (مشتق من المنتجات)
+  const brandSeen = new Set<string>();
+  for (const p of products) {
+    const key = `${p.brand}|${p.category}`;
+    if (brandSeen.has(key)) continue;
+    brandSeen.add(key);
+    await prisma.brand.create({
+      data: { name: p.brand, category: p.category },
     });
   }
 

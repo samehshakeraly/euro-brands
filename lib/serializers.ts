@@ -1,11 +1,16 @@
 import type {
+  Brand,
   Product,
   ProductVariant,
   Sale,
   SaleItem,
 } from "@prisma/client";
 import type { BranchValue, CategoryValue } from "./constants";
-import type { ProductDTO, SaleDTO, VariantDTO } from "./types";
+import type { BrandDTO, ProductDTO, SaleDTO, VariantDTO } from "./types";
+
+export function toBrandDTO(b: Brand): BrandDTO {
+  return { id: b.id, name: b.name, category: b.category as CategoryValue };
+}
 
 export function toVariantDTO(v: ProductVariant): VariantDTO {
   return {
@@ -13,6 +18,7 @@ export function toVariantDTO(v: ProductVariant): VariantDTO {
     productId: v.productId,
     size: v.size,
     quantity: v.quantity,
+    minQuantity: v.minQuantity,
     branch: v.branch as BranchValue,
     price: v.price,
   };
@@ -20,7 +26,10 @@ export function toVariantDTO(v: ProductVariant): VariantDTO {
 
 type ProductWithVariants = Product & { variants: ProductVariant[] };
 
-export function toProductDTO(p: ProductWithVariants): ProductDTO {
+export function toProductDTO(
+  p: ProductWithVariants,
+  soldCount?: number
+): ProductDTO {
   const variants = p.variants.map(toVariantDTO);
   return {
     id: p.id,
@@ -28,9 +37,12 @@ export function toProductDTO(p: ProductWithVariants): ProductDTO {
     brand: p.brand,
     category: p.category as CategoryValue,
     description: p.description,
+    sku: p.sku,
+    barcode: p.barcode,
     images: p.images,
     variants,
     totalQuantity: variants.reduce((sum, v) => sum + v.quantity, 0),
+    ...(soldCount !== undefined ? { soldCount } : {}),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };

@@ -6,6 +6,7 @@ import {
   type CategoryValue,
 } from "./constants";
 import type {
+  BrandInput,
   ImportRow,
   ProductInput,
   SaleInput,
@@ -43,6 +44,9 @@ export function parseProductInput(body: any): ProductInput {
     const branch = asString(v?.branch);
     const quantity = Number(v?.quantity);
     const price = Number(v?.price);
+    const minRaw = Number(v?.minQuantity);
+    const minQuantity =
+      Number.isFinite(minRaw) && minRaw >= 0 ? Math.floor(minRaw) : 5;
 
     if (!size) throw new ValidationError(`المقاس مطلوب في الصف ${i + 1}`);
     if (!BRANCHES.includes(branch as BranchValue))
@@ -66,6 +70,7 @@ export function parseProductInput(body: any): ProductInput {
       size,
       branch: branch as BranchValue,
       quantity: Math.floor(quantity),
+      minQuantity,
       price,
     };
   });
@@ -75,6 +80,8 @@ export function parseProductInput(body: any): ProductInput {
     brand,
     category: category as CategoryValue,
     description: asString(body?.description) || null,
+    sku: asString(body?.sku) || null,
+    barcode: asString(body?.barcode) || null,
     images,
     variants,
   };
@@ -118,6 +125,16 @@ export function parseImportRows(body: any): ImportRow[] {
       price,
     };
   });
+}
+
+// التحقق من مدخلات البراند
+export function parseBrandInput(body: any): BrandInput {
+  const name = asString(body?.name);
+  const category = asString(body?.category);
+  if (!name) throw new ValidationError("اسم البراند مطلوب");
+  if (!CATEGORIES.includes(category as CategoryValue))
+    throw new ValidationError("الفئة غير صحيحة");
+  return { name, category: category as CategoryValue };
 }
 
 // التحقق من مدخلات الفاتورة

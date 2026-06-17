@@ -95,6 +95,7 @@ export async function PUT(
               size: v.size,
               branch: v.branch as Branch,
               quantity: v.quantity,
+              minQuantity: v.minQuantity,
               price: v.price,
             },
           });
@@ -105,6 +106,7 @@ export async function PUT(
               size: v.size,
               branch: v.branch as Branch,
               quantity: v.quantity,
+              minQuantity: v.minQuantity,
               price: v.price,
             },
           });
@@ -118,10 +120,24 @@ export async function PUT(
           brand: input.brand,
           category: input.category as Category,
           description: input.description,
+          sku: input.sku ?? null,
+          barcode: input.barcode ?? null,
           images: input.images,
         },
         include: { variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] } },
       });
+    });
+
+    // تسجيل البراند ضمن سجل البراندات للفئة
+    await prisma.brand.upsert({
+      where: {
+        name_category: {
+          name: input.brand,
+          category: input.category as Category,
+        },
+      },
+      update: {},
+      create: { name: input.brand, category: input.category as Category },
     });
 
     return ok(toProductDTO(updated));

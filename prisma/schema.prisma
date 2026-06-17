@@ -43,6 +43,8 @@ model Product {
   brand       String
   category    Category
   description String?
+  sku         String? // كود المنتج (اختياري)
+  barcode     String? // الباركود (اختياري)
   images      String[] @default([]) // حتى 3 صور
 
   variants  ProductVariant[]
@@ -55,15 +57,27 @@ model Product {
   @@index([brand])
 }
 
+// سجل البراندات لكل فئة (لقوائم الاختيار والفلاتر)
+model Brand {
+  id        String   @id @default(cuid())
+  name      String
+  category  Category
+  createdAt DateTime @default(now())
+
+  @@unique([name, category])
+  @@index([category])
+}
+
 model ProductVariant {
   id        String @id @default(cuid())
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  size     String // XS S M L XL 2XL 3XL 4XL 5XL أو مقاسات أرقام للأحذية
-  quantity Int    @default(0)
-  branch   Branch
-  price    Float // سعر البيع لكل صنف بالجنيه المصري
+  size        String // XS S M L XL 2XL 3XL 4XL 5XL أو مقاسات أرقام للأحذية
+  quantity    Int    @default(0)
+  minQuantity Int    @default(5) // الحد الأدنى للتنبيه بقلة المخزون
+  branch      Branch
+  price       Float // سعر البيع لكل صنف بالجنيه المصري
 
   saleItems SaleItem[]
 

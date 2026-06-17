@@ -11,6 +11,7 @@ export interface VariantDTO {
   productId: string;
   size: string;
   quantity: number;
+  minQuantity: number;
   branch: BranchValue;
   price: number;
 }
@@ -21,11 +22,25 @@ export interface ProductDTO {
   brand: string;
   category: CategoryValue;
   description: string | null;
+  sku: string | null;
+  barcode: string | null;
   images: string[];
   variants: VariantDTO[];
   totalQuantity: number;
+  soldCount?: number; // إجمالي القطع المباعة (للترتيب بالأكثر مبيعاً)
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BrandDTO {
+  id: string;
+  name: string;
+  category: CategoryValue;
+}
+
+export interface BrandInput {
+  name: string;
+  category: CategoryValue;
 }
 
 export interface SaleItemDTO {
@@ -61,6 +76,7 @@ export interface VariantInput {
   id?: string; // موجود عند التعديل، غير موجود عند الإضافة
   size: string;
   quantity: number;
+  minQuantity: number;
   branch: BranchValue;
   price: number;
 }
@@ -70,6 +86,8 @@ export interface ProductInput {
   brand: string;
   category: CategoryValue;
   description?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
   images: string[];
   variants: VariantInput[];
 }

@@ -8,14 +8,16 @@ import {
   Plus,
   Trash2,
   Save,
-  ImageIcon,
   Link2,
+  Copy,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { AddBrandModal } from "@/components/add-brand-modal";
 import { apiPost, apiPut, uploadImage } from "@/lib/client";
-import type { ProductDTO, ProductInput } from "@/lib/types";
+import { useFetch } from "@/lib/use-fetch";
+import type { BrandDTO, ProductDTO, ProductInput } from "@/lib/types";
 import {
   BRANCHES,
   BRANCH_LABELS,
@@ -32,17 +34,19 @@ interface VariantRow {
   branch: BranchValue;
   size: string;
   quantity: string;
+  minQuantity: string;
   price: string;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-function emptyRow(): VariantRow {
+function emptyRow(branch: BranchValue = "HADAYEK"): VariantRow {
   return {
     clientId: uid(),
-    branch: "HADAYEK",
+    branch,
     size: "",
     quantity: "0",
+    minQuantity: "5",
     price: "0",
   };
 }
@@ -76,6 +80,8 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     initial?.category ?? "CLOTHES"
   );
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [sku, setSku] = useState(initial?.sku ?? "");
+  const [barcode, setBarcode] = useState(initial?.barcode ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
   const [urlInput, setUrlInput] = useState("");
   const [variants, setVariants] = useState<VariantRow[]>(
@@ -86,6 +92,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           branch: v.branch,
           size: v.size,
           quantity: String(v.quantity),
+          minQuantity: String(v.minQuantity ?? 5),
           price: String(v.price),
         }))
       : [emptyRow()]
@@ -93,36 +100,40 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [brandModalOpen, setBrandModalOpen] = useState(false);
 
   const sizeOptions = sizesForCategory(category);
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (images.length >= 3) {
-      toast.error("الحد الأقصى 3 صور للمنتج");
-      return;
-    }
-    setUploading(true);
-    try {
-      const { url } = await uploadImage(file);
-      setImages((prev) => [...prev, url]);
-      toast.success("تم رفع الصورة");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "تعذّر رفع الصورة");
-    } finally {
-      setUploading(false);
+  // البراندات حسب الفئة المحددة
+  const { data: brandsData, refetch: refetchBrands } = useFetch<BrandDTO[]>(
+    `/api/brands?category=${category}`
+  );
+  const brandOptions = (brandsData ?? []).map((b) => b.name);
+
+  async function uploadFiles(files: File[]) {
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      if (images.length >= 3) {
+        toast.error("الحد الأقصى 3 صور للمنتج");
+        break;
+      }
+      setUploading(true);
+      try {
+        const { url } = await uploadImage(file);
+        setImages((prev) => (prev.length < 3 ? [...prev, url] : prev));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "تعذّر رفع الصورة");
+      } finally {
+        setUploading(false);
+      }
     }
   }
 
   function addUrl() {
     const url = urlInput.trim();
     if (!url) return;
-    if (images.length >= 3) {
-      toast.error("الحد الأقصى 3 صور للمنتج");
-      return;
-    }
+    if (images.length >= 3) return toast.error("الحد الأقصى 3 صور للمنتج");
     setImages((prev) => [...prev, url]);
     setUrlInput("");
   }
@@ -133,11 +144,36 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     );
   }
 
+  // نسخ كل الصفوف إلى الفرع الآخر
+  function copyToOtherBranch() {
+    setVariants((rows) => {
+      const additions: VariantRow[] = [];
+      for (const r of rows) {
+        const other: BranchValue =
+          r.branch === "HADAYEK" ? "ZAHRAA" : "HADAYEK";
+        const exists = rows.some(
+          (x) => x.size === r.size && x.branch === other
+        );
+        const willAdd = additions.some(
+          (x) => x.size === r.size && x.branch === other
+        );
+        if (r.size && !exists && !willAdd) {
+          additions.push({ ...r, clientId: uid(), id: undefined, branch: other });
+        }
+      }
+      if (additions.length === 0) {
+        toast("لا توجد صفوف لنسخها للفرع الآخر");
+        return rows;
+      }
+      toast.success(`تم نسخ ${additions.length} صف للفرع الآخر`);
+      return [...rows, ...additions];
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     if (!name.trim()) return toast.error("اسم المنتج مطلوب");
-    if (!brand.trim()) return toast.error("البراند مطلوب");
+    if (!brand.trim()) return toast.error("يجب اختيار البراند");
     if (variants.length === 0) return toast.error("أضف صفاً واحداً على الأقل");
 
     const seen = new Set<string>();
@@ -154,12 +190,15 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
       brand: brand.trim(),
       category,
       description: description.trim() || null,
+      sku: sku.trim() || null,
+      barcode: barcode.trim() || null,
       images,
       variants: variants.map((r) => ({
         id: r.id,
         branch: r.branch,
         size: r.size,
         quantity: Math.max(0, Math.floor(Number(r.quantity) || 0)),
+        minQuantity: Math.max(0, Math.floor(Number(r.minQuantity) || 0)),
         price: Math.max(0, Number(r.price) || 0),
       })),
     };
@@ -197,21 +236,16 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               placeholder="مثال: تيشيرت قطن كلاسيك"
             />
           </div>
-          <div>
-            <label className="label">البراند *</label>
-            <input
-              className="input"
-              value={brand}
-              onChange={(e) => setBrand(e.target.value)}
-              placeholder="مثال: Zara"
-            />
-          </div>
+
           <div>
             <label className="label">الفئة *</label>
             <select
               className="input"
               value={category}
-              onChange={(e) => setCategory(e.target.value as CategoryValue)}
+              onChange={(e) => {
+                setCategory(e.target.value as CategoryValue);
+                setBrand(""); // إعادة ضبط البراند عند تغيير الفئة
+              }}
             >
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -220,10 +254,81 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               ))}
             </select>
           </div>
+
+          {/* البراند: قائمة منسدلة حسب الفئة + زر إضافة */}
+          <div>
+            <label className="label">البراند *</label>
+            <div className="flex gap-2">
+              <select
+                className="input"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+              >
+                <option value="">اختر البراند</option>
+                {brandOptions.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+                {brand && !brandOptions.includes(brand) && (
+                  <option value={brand}>{brand}</option>
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={() => setBrandModalOpen(true)}
+                className="btn btn-secondary flex-shrink-0"
+                title="إضافة براند جديد"
+              >
+                <Plus className="h-4 w-4" />
+                جديد
+              </button>
+            </div>
+            {brandOptions.length === 0 && (
+              <p className="mt-1 text-xs text-muted">
+                لا توجد براندات لهذه الفئة — أضف واحداً عبر زر «جديد».
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="label">كود المنتج (SKU)</label>
+            <input
+              className="input"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              placeholder="مثال: NK-001"
+            />
+          </div>
+
+          <div>
+            <label className="label">الباركود</label>
+            <div className="flex gap-2">
+              <input
+                className="input nums"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="امسح أو أدخل الباركود"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  sku.trim()
+                    ? setBarcode(sku.trim())
+                    : toast.error("أدخل كود SKU أولاً")
+                }
+                className="btn btn-secondary flex-shrink-0 text-xs"
+                title="توليد الباركود من كود SKU"
+              >
+                من SKU
+              </button>
+            </div>
+          </div>
+
           <div className="sm:col-span-2">
             <label className="label">الوصف</label>
             <textarea
-              className="input min-h-[90px] resize-y"
+              className="input min-h-[80px] resize-y"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="وصف اختياري للمنتج..."
@@ -232,10 +337,10 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         </div>
       </Card>
 
-      {/* الصور */}
+      {/* الصور — منطقة سحب وإفلات */}
       <Card className="p-5">
         <h2 className="mb-1 text-base font-bold text-text">صور المنتج</h2>
-        <p className="mb-4 text-xs text-muted">حتى 3 صور كحد أقصى</p>
+        <p className="mb-4 text-xs text-muted">حتى 3 صور — اسحب وأفلت أو اختر ملفاً</p>
 
         <div className="flex flex-wrap gap-3">
           {images.map((img, i) => (
@@ -259,19 +364,29 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           ))}
 
           {images.length < 3 && (
-            <button
-              type="button"
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                uploadFiles(Array.from(e.dataTransfer.files));
+              }}
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+              className={`flex h-24 w-40 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-muted transition-colors hover:border-accent hover:text-accent ${
+                dragging ? "border-accent bg-accent-soft text-accent" : ""
+              }`}
             >
               {uploading ? (
                 <Spinner className="h-5 w-5" />
               ) : (
                 <Upload className="h-5 w-5" />
               )}
-              <span className="text-xs">رفع صورة</span>
-            </button>
+              <span className="text-xs">اسحب الصورة هنا أو اضغط</span>
+            </div>
           )}
         </div>
 
@@ -279,11 +394,14 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
-          onChange={handleFile}
+          onChange={(e) => {
+            uploadFiles(Array.from(e.target.files ?? []));
+            e.target.value = "";
+          }}
         />
 
-        {/* إضافة عبر رابط (بديل عند عدم تهيئة Blob) */}
         {images.length < 3 && (
           <div className="mt-3 flex max-w-md items-center gap-2">
             <div className="relative flex-1">
@@ -301,11 +419,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 }}
               />
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary h-[38px]"
-              onClick={addUrl}
-            >
+            <button type="button" className="btn btn-secondary h-[42px]" onClick={addUrl}>
               إضافة
             </button>
           </div>
@@ -314,24 +428,40 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
       {/* المقاسات والكميات */}
       <Card className="p-5">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-bold text-text">المقاسات والكميات</h2>
-          <button
-            type="button"
-            className="btn btn-secondary h-9 text-xs"
-            onClick={() => setVariants((rows) => [...rows, emptyRow()])}
-          >
-            <Plus className="h-4 w-4" />
-            إضافة صف
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary h-9 text-xs"
+              onClick={copyToOtherBranch}
+              title="نسخ كل الصفوف إلى الفرع الآخر"
+            >
+              <Copy className="h-4 w-4" />
+              نسخ للفرع الآخر
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary h-9 text-xs"
+              onClick={() =>
+                setVariants((rows) => [
+                  ...rows,
+                  emptyRow(rows[rows.length - 1]?.branch ?? "HADAYEK"),
+                ])
+              }
+            >
+              <Plus className="h-4 w-4" />
+              إضافة صف
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3">
-          {/* رؤوس الأعمدة (سطح المكتب) */}
-          <div className="hidden gap-3 px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[1.4fr_1fr_1fr_1.2fr_auto]">
+          <div className="hidden gap-3 px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[1.3fr_1fr_0.9fr_0.9fr_1.1fr_auto]">
             <span>الفرع</span>
             <span>المقاس</span>
             <span>الكمية</span>
+            <span>الحد الأدنى</span>
             <span>السعر (ج.م)</span>
             <span></span>
           </div>
@@ -339,7 +469,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           {variants.map((row) => (
             <div
               key={row.clientId}
-              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.4fr_1fr_1fr_1.2fr_auto] sm:items-start sm:border-0 sm:p-0"
+              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.3fr_1fr_0.9fr_0.9fr_1.1fr_auto] sm:items-start sm:border-0 sm:p-0"
             >
               <VariantField label="الفرع">
                 <select
@@ -373,7 +503,6 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                       {s}
                     </option>
                   ))}
-                  {/* الحفاظ على مقاس قديم خارج قائمة الفئة الحالية */}
                   {row.size && !sizeOptions.includes(row.size) && (
                     <option value={row.size}>{row.size}</option>
                   )}
@@ -388,6 +517,18 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   value={row.quantity}
                   onChange={(e) =>
                     updateRow(row.clientId, { quantity: e.target.value })
+                  }
+                />
+              </VariantField>
+
+              <VariantField label="الحد الأدنى">
+                <input
+                  type="number"
+                  min={0}
+                  className="input nums"
+                  value={row.minQuantity}
+                  onChange={(e) =>
+                    updateRow(row.clientId, { minQuantity: e.target.value })
                   }
                 />
               </VariantField>
@@ -426,7 +567,6 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         </div>
       </Card>
 
-      {/* أزرار الحفظ */}
       <div className="flex gap-3">
         <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving ? <Spinner className="h-4 w-4" /> : <Save className="h-4 w-4" />}
@@ -441,6 +581,16 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           إلغاء
         </button>
       </div>
+
+      <AddBrandModal
+        open={brandModalOpen}
+        category={category}
+        onClose={() => setBrandModalOpen(false)}
+        onAdded={(b) => {
+          setBrand(b.name);
+          refetchBrands();
+        }}
+      />
     </form>
   );
 }

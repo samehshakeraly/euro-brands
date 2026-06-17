@@ -16,6 +16,7 @@ import {
 } from "./constants";
 import { ValidationError } from "./validate";
 import type {
+  BrandDTO,
   DashboardStats,
   ImportResult,
   ImportRow,
@@ -41,6 +42,7 @@ interface MVariant {
   productId: string;
   size: string;
   quantity: number;
+  minQuantity: number;
   branch: BranchValue;
   price: number;
 }
@@ -50,6 +52,8 @@ interface MProduct {
   brand: string;
   category: CategoryValue;
   description: string | null;
+  sku: string | null;
+  barcode: string | null;
   images: string[];
   variants: MVariant[];
   createdAt: Date;
@@ -79,9 +83,16 @@ interface MSale {
   items: MItem[];
 }
 
+interface MBrand {
+  id: string;
+  name: string;
+  category: CategoryValue;
+}
+
 interface Store {
   products: MProduct[];
   sales: MSale[];
+  brands: MBrand[];
   seq: number;
 }
 
@@ -103,7 +114,7 @@ const IMG = (seed: string) =>
 //  بناء البيانات التجريبية
 // ----------------------------------------------------
 function buildStore(): Store {
-  const store: Store = { products: [], sales: [], seq: 0 };
+  const store: Store = { products: [], sales: [], brands: [], seq: 0 };
   const id = (p: string) => `${p}_${++store.seq}`;
 
   type VSpec = [size: string, branch: BranchValue, qty: number, price: number];
@@ -116,12 +127,16 @@ function buildStore(): Store {
     specs: VSpec[]
   ): MProduct => {
     const pid = id("p");
+    const n = pid.split("_")[1];
+    const code = brand.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase();
     return {
       id: pid,
       name,
       brand,
       category,
       description,
+      sku: `${code}-${String(n).padStart(3, "0")}`,
+      barcode: `62${String(n).padStart(10, "0")}`,
       images: [image],
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -130,6 +145,7 @@ function buildStore(): Store {
         productId: pid,
         size,
         quantity,
+        minQuantity: 5,
         branch,
         price,
       })),
@@ -378,6 +394,17 @@ function buildStore(): Store {
   store.sales.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   store.sales.forEach((s, idx) => (s.saleNumber = idx + 1));
 
+  // اشتقاق البراندات من المنتجات (لكل فئة)
+  for (const p of store.products) {
+    if (
+      !store.brands.some(
+        (b) => b.name === p.brand && b.category === p.category
+      )
+    ) {
+      store.brands.push({ id: id("b"), name: p.brand, category: p.category });
+    }
+  }
+
   return store;
 }
 
@@ -395,6 +422,7 @@ function shapeVariant(v: MVariant): VariantDTO {
     productId: v.productId,
     size: v.size,
     quantity: v.quantity,
+    minQuantity: v.minQuantity,
     branch: v.branch,
     price: v.price,
   };
@@ -413,6 +441,8 @@ function shapeProduct(
     brand: p.brand,
     category: p.category,
     description: p.description,
+    sku: p.sku,
+    barcode: p.barcode,
     images: p.images,
     variants,
     totalQuantity: variants.reduce((s, v) => s + v.quantity, 0),
@@ -465,13 +495,55 @@ function shapeSale(s: MSale): SaleDTO {
 // ----------------------------------------------------
 //  عمليات المنتجات
 // ----------------------------------------------------
+// ----- البراندات -----
+function registerBrand(name: string, category: CategoryValue) {
+  if (!name) return;
+  if (!store.brands.some((b) => b.name === name && b.category === category)) {
+    store.brands.push({ id: nextId("b"), name, category });
+  }
+}
+
+export function mockListBrands(category?: string | null): BrandDTO[] {
+  return store.brands
+    .filter((b) => !category || b.category === category)
+    .map((b) => ({ id: b.id, name: b.name, category: b.category }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+}
+
+export function mockCreateBrand(input: {
+  name: string;
+  category: CategoryValue;
+}): BrandDTO {
+  const found = store.brands.find(
+    (b) => b.name === input.name && b.category === input.category
+  );
+  if (found) return { id: found.id, name: found.name, category: found.category };
+  const b: MBrand = {
+    id: nextId("b"),
+    name: input.name,
+    category: input.category,
+  };
+  store.brands.push(b);
+  return { id: b.id, name: b.name, category: b.category };
+}
+
+function soldCountByProduct(): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const s of store.sales)
+    for (const it of s.items)
+      m.set(it.productId, (m.get(it.productId) ?? 0) + it.quantity);
+  return m;
+}
+
 export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
   const search = sp.get("search")?.trim().toLowerCase();
   const branch = sp.get("branch") as BranchValue | null;
   const category = sp.get("category");
   const brand = sp.get("brand");
   const size = sp.get("size");
+  const withSales = sp.get("withSales") === "1";
   const hasVariantFilter = !!(branch || size);
+  const soldMap = withSales ? soldCountByProduct() : null;
 
   const matchVariant = (v: MVariant) =>
     (!branch || v.branch === branch) && (!size || v.size === size);
@@ -480,13 +552,22 @@ export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
     .filter((p) => {
       if (category && p.category !== category) return false;
       if (brand && p.brand !== brand) return false;
-      if (search && !`${p.name} ${p.brand}`.toLowerCase().includes(search))
+      if (
+        search &&
+        !`${p.name} ${p.brand} ${p.sku ?? ""} ${p.barcode ?? ""}`
+          .toLowerCase()
+          .includes(search)
+      )
         return false;
       if (hasVariantFilter && !p.variants.some(matchVariant)) return false;
       return true;
     })
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .map((p) => shapeProduct(p, hasVariantFilter ? matchVariant : undefined));
+    .map((p) => {
+      const dto = shapeProduct(p, hasVariantFilter ? matchVariant : undefined);
+      if (soldMap) dto.soldCount = soldMap.get(p.id) ?? 0;
+      return dto;
+    });
 }
 
 export function mockGetProduct(id: string): ProductDTO | null {
@@ -502,6 +583,8 @@ export function mockCreateProduct(input: ProductInput): ProductDTO {
     brand: input.brand,
     category: input.category,
     description: input.description ?? null,
+    sku: input.sku ?? null,
+    barcode: input.barcode ?? null,
     images: input.images,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -511,10 +594,12 @@ export function mockCreateProduct(input: ProductInput): ProductDTO {
       size: v.size,
       branch: v.branch,
       quantity: v.quantity,
+      minQuantity: v.minQuantity,
       price: v.price,
     })),
   };
   store.products.unshift(product);
+  registerBrand(product.brand, product.category);
   return shapeProduct(product);
 }
 
@@ -550,6 +635,7 @@ export function mockUpdateProduct(
       existing.size = vi.size;
       existing.branch = vi.branch;
       existing.quantity = vi.quantity;
+      existing.minQuantity = vi.minQuantity;
       existing.price = vi.price;
     } else {
       product.variants.push({
@@ -558,6 +644,7 @@ export function mockUpdateProduct(
         size: vi.size,
         branch: vi.branch,
         quantity: vi.quantity,
+        minQuantity: vi.minQuantity,
         price: vi.price,
       });
     }
@@ -567,8 +654,11 @@ export function mockUpdateProduct(
   product.brand = input.brand;
   product.category = input.category;
   product.description = input.description ?? null;
+  product.sku = input.sku ?? null;
+  product.barcode = input.barcode ?? null;
   product.images = input.images;
   product.updatedAt = new Date();
+  registerBrand(product.brand, product.category);
 
   return shapeProduct(product);
 }
@@ -616,12 +706,15 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
         brand: row.brand,
         category: row.category,
         description: null,
+        sku: null,
+        barcode: null,
         images: [],
         createdAt: new Date(),
         updatedAt: new Date(),
         variants: [],
       };
       store.products.unshift(product);
+      registerBrand(product.brand, product.category);
       result.newProducts++;
     }
 
@@ -639,6 +732,7 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
         size: row.size,
         branch: row.branch,
         quantity: row.quantity,
+        minQuantity: 5,
         price: row.price,
       });
       result.newVariants++;
