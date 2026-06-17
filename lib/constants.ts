@@ -174,27 +174,36 @@ export const DEFAULT_PRODUCT_TYPES: Record<
 > = {
   CLOTHES: [
     { name: "تيشرت", code: "TSHIRT" },
+    { name: "بولو", code: "POLO" },
     { name: "هودي", code: "HOOD" },
     { name: "سويت شيرت", code: "SWEAT" },
     { name: "جاكيت", code: "JKT" },
-    { name: "بلوزة", code: "BLOUSE" },
+    { name: "بليزر", code: "BLZR" },
+    { name: "قميص", code: "SHIRT" },
+    { name: "اخرى", code: "OTHER" },
   ],
   PANTS: [
     { name: "جينز", code: "JEANS" },
     { name: "سوت بانتس", code: "SWEATP" },
     { name: "شورت", code: "SHORT" },
     { name: "كارجو", code: "CARGO" },
+    { name: "ميوه", code: "MIO" },
+    { name: "اخرى", code: "OTHER" },
   ],
   SHOES: [
     { name: "سنيكرز", code: "SNK" },
     { name: "صندل", code: "SNDL" },
     { name: "بوت", code: "BOOT" },
     { name: "كلاسيك", code: "CLSC" },
+    { name: "شبشب", code: "SHIB" },
+    { name: "سليبر", code: "SLPR" },
+    { name: "اخرى", code: "OTHER" },
   ],
   PERFUMES: [
     { name: "عطر رجالي", code: "MEN" },
     { name: "عطر حريمي", code: "WOM" },
     { name: "عطر مشترك", code: "UNI" },
+    { name: "اخرى", code: "OTHER" },
   ],
 };
 

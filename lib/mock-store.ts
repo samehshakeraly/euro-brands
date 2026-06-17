@@ -252,7 +252,7 @@ function buildStore(): Store {
       "قميص كاجوال مقلّم",
       "H&M",
       "CLOTHES",
-      "بلوزة",
+      "قميص",
       "قميص كاجوال بأكمام طويلة وخامة قطنية ناعمة.",
       IMG("photo-1602810318383-e386cc2a3ccf"),
       [
@@ -1102,7 +1102,39 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
 // ----------------------------------------------------
 //  أنواع المنتجات
 // ----------------------------------------------------
+
+// upsert صامت لقائمة الأنواع الافتراضية على المتجر — إعادة آمنة بلا فقد
+// لأنواع موجودة، وتُبقي أي أنواع مخصّصة أضافها المستخدم
+function ensureDefaultProductTypes(): { added: number; updated: number } {
+  let added = 0;
+  let updated = 0;
+  for (const cat of Object.keys(DEFAULT_PRODUCT_TYPES) as CategoryValue[]) {
+    for (const t of DEFAULT_PRODUCT_TYPES[cat]) {
+      const existing = store.productTypes.find(
+        (x) => x.name === t.name && x.category === cat
+      );
+      if (existing) {
+        if (existing.code !== t.code) {
+          existing.code = t.code;
+          updated++;
+        }
+      } else {
+        store.productTypes.push({
+          id: nextId("pt"),
+          name: t.name,
+          code: t.code,
+          category: cat,
+        });
+        added++;
+      }
+    }
+  }
+  return { added, updated };
+}
+
 export function mockListProductTypes(category?: string | null): ProductTypeDTO[] {
+  // مزامنة الأنواع الافتراضية تلقائياً عند كل قراءة — رخيصة وبدون آثار جانبية
+  ensureDefaultProductTypes();
   return store.productTypes
     .filter((t) => !category || t.category === category)
     .map((t) => ({
@@ -1130,6 +1162,16 @@ export function mockCreateProductType(input: ProductTypeInput): ProductTypeDTO {
   };
   store.productTypes.push(t);
   return { id: t.id, name: t.name, code: t.code, category: t.category };
+}
+
+// زرع الأنواع الافتراضية صراحةً (يستدعى من /api/seed/product-types)
+export function mockSeedProductTypes(): {
+  added: number;
+  updated: number;
+  total: number;
+} {
+  const { added, updated } = ensureDefaultProductTypes();
+  return { added, updated, total: store.productTypes.length };
 }
 
 // ----------------------------------------------------

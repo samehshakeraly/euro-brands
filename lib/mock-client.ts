@@ -14,6 +14,7 @@ import {
   mockCreateBrand,
   mockListProductTypes,
   mockCreateProductType,
+  mockSeedProductTypes,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -96,6 +97,10 @@ export async function mockApi<T>(
     if (method === "POST")
       return mockCreateProductType(parseProductTypeInput(body)) as T;
   }
+
+  // /api/seed/product-types — زرع الأنواع الافتراضية
+  if (path === "/api/seed/product-types" && method === "POST")
+    return { ...mockSeedProductTypes(), mode: "mock" } as T;
 
   // /api/sales
   if (path === "/api/sales") {
