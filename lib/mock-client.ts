@@ -8,6 +8,7 @@ import {
   mockUpdateProduct,
   mockDeleteProduct,
   mockImportInventory,
+  mockLowStock,
   mockListBrands,
   mockCreateBrand,
   mockListSales,
@@ -93,6 +94,9 @@ export async function mockApi<T>(
     if (!dto) throw new Error("الفاتورة غير موجودة");
     return dto as T;
   }
+
+  // /api/low-stock
+  if (path === "/api/low-stock") return mockLowStock() as T;
 
   // /api/dashboard
   if (path === "/api/dashboard") return mockDashboard(sp) as T;

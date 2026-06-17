@@ -20,6 +20,7 @@ import type {
   DashboardStats,
   ImportResult,
   ImportRow,
+  LowStockResponse,
   ProductDTO,
   ProductInput,
   ReportsData,
@@ -573,6 +574,24 @@ export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
 export function mockGetProduct(id: string): ProductDTO | null {
   const p = store.products.find((x) => x.id === id);
   return p ? shapeProduct(p) : null;
+}
+
+export function mockLowStock(): LowStockResponse {
+  const items = store.products.flatMap((p) =>
+    p.variants
+      .filter((v) => v.quantity <= v.minQuantity)
+      .map((v) => ({
+        id: v.id,
+        productName: p.name,
+        brand: p.brand,
+        branch: v.branch,
+        size: v.size,
+        quantity: v.quantity,
+        minQuantity: v.minQuantity,
+      }))
+  );
+  items.sort((a, b) => a.quantity - a.minQuantity - (b.quantity - b.minQuantity));
+  return { count: items.length, items };
 }
 
 export function mockCreateProduct(input: ProductInput): ProductDTO {

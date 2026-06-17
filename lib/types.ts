@@ -43,6 +43,22 @@ export interface BrandInput {
   category: CategoryValue;
 }
 
+// تنبيهات قلة المخزون (الكمية <= الحد الأدنى للمقاس)
+export interface LowStockItem {
+  id: string;
+  productName: string;
+  brand: string;
+  branch: BranchValue;
+  size: string;
+  quantity: number;
+  minQuantity: number;
+}
+
+export interface LowStockResponse {
+  count: number;
+  items: LowStockItem[];
+}
+
 export interface SaleItemDTO {
   id: string;
   productId: string;

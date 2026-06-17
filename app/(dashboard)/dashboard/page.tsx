@@ -14,9 +14,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SalesTable } from "@/components/sales-table";
+import { BranchBadge, StockBadge } from "@/components/ui/badge";
 import { SalesLineChart } from "@/components/charts/sales-line-chart";
 import { CategoryPieChart } from "@/components/charts/category-pie-chart";
-import type { DashboardStats } from "@/lib/types";
+import type { DashboardStats, LowStockResponse } from "@/lib/types";
 import { BRANCH_LABELS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
@@ -28,6 +29,7 @@ export default function DashboardPage() {
       )}&to=${encodeURIComponent(range.to)}`
     : null;
   const { data, loading, error } = useFetch<DashboardStats>(url);
+  const { data: lowStock } = useFetch<LowStockResponse>("/api/low-stock");
 
   return (
     <div>
@@ -83,11 +85,53 @@ export default function DashboardPage() {
             <StatCard
               tone="warning"
               title="أصناف تحتاج تزويد"
-              value={formatNumber(data.lowStockCount)}
-              subtitle="كمية منخفضة أو نافدة"
+              value={formatNumber(lowStock?.count ?? data.lowStockCount)}
+              subtitle="الكمية ≤ الحد الأدنى"
               icon={<AlertTriangle className="h-5 w-5" />}
             />
           </div>
+
+          {/* تنبيه قلة المخزون */}
+          {lowStock && lowStock.count > 0 && (
+            <Card className="p-5" tone="warning">
+              <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-text">
+                <AlertTriangle className="h-5 w-5 text-warning" />
+                تنبيه قلة المخزون
+                <span className="badge bg-[rgba(201,133,26,0.14)] text-warning nums">
+                  {formatNumber(lowStock.count)}
+                </span>
+              </h2>
+              <div className="max-h-72 space-y-2 overflow-y-auto">
+                {lowStock.items.slice(0, 30).map((it) => (
+                  <div
+                    key={it.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-text">
+                        {it.productName}
+                        <span className="mr-1 text-xs text-muted">
+                          ({it.brand})
+                        </span>
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <BranchBadge branch={it.branch} />
+                        <span className="badge bg-[var(--surface-2)] text-muted nums">
+                          مقاس {it.size}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted nums">
+                        الحد الأدنى: {formatNumber(it.minQuantity)}
+                      </span>
+                      <StockBadge quantity={it.quantity} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* الرسوم البيانية */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -14,6 +14,8 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { apiGet } from "@/lib/client";
+import type { LowStockResponse } from "@/lib/types";
 import { ThemeToggle } from "./theme-toggle";
 
 const NAV_ITEMS = [
@@ -33,6 +35,14 @@ function isActive(pathname: string, href: string): boolean {
 export function TopNav() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [lowStock, setLowStock] = useState(0);
+
+  useEffect(() => {
+    apiGet<LowStockResponse>("/api/low-stock")
+      .then((r) => setLowStock(r.count))
+      .catch(() => {});
+    // يُعاد الجلب عند تغيّر الصفحة (مثلاً بعد تعديل المخزون)
+  }, [pathname]);
 
   return (
     <header className="sticky top-0 z-30 border-b bg-surface/95 backdrop-blur">
@@ -65,6 +75,11 @@ export function TopNav() {
                 >
                   <item.icon className="h-4 w-4" />
                   {item.label}
+                  {item.href === "/dashboard" && lowStock > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold text-white nums">
+                      {lowStock}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -104,6 +119,11 @@ export function TopNav() {
               >
                 <item.icon className="h-5 w-5" />
                 {item.label}
+                {item.href === "/dashboard" && lowStock > 0 && (
+                  <span className="mr-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold text-white nums">
+                    {lowStock}
+                  </span>
+                )}
               </Link>
             );
           })}
