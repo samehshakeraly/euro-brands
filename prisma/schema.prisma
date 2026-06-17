@@ -76,9 +76,11 @@ model Product {
   brand       String
   category    Category
   description String?
-  sku         String? // كود المنتج (اختياري)
   barcode     String? // الباركود (اختياري)
   images      String[] @default([]) // حتى 3 صور
+
+  productTypeId String?
+  productType   ProductType? @relation(fields: [productTypeId], references: [id])
 
   variants  ProductVariant[]
   saleItems SaleItem[]
@@ -88,6 +90,21 @@ model Product {
 
   @@index([category])
   @@index([brand])
+  @@index([productTypeId])
+}
+
+// نوع المنتج (تيشرت، هودي، جينز، ...) — مرتبط بالفئة
+model ProductType {
+  id        String   @id @default(cuid())
+  name      String // الاسم العربي للنوع
+  code      String // اختصار لاتيني يُستخدم في توليد SKU
+  category  Category
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@unique([name, category])
+  @@index([category])
 }
 
 // سجل البراندات لكل فئة (لقوائم الاختيار والفلاتر)
@@ -107,6 +124,8 @@ model ProductVariant {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   size        String // XS S M L XL 2XL 3XL 4XL 5XL أو مقاسات أرقام للأحذية
+  color       String? // اسم اللون بالعربية (أبيض، أسود، ...)
+  sku         String? @unique // كود فريد لهذا المتغيّر
   quantity    Int    @default(0)
   minQuantity Int    @default(5) // الحد الأدنى للتنبيه بقلة المخزون
   branch      Branch
@@ -114,7 +133,6 @@ model ProductVariant {
 
   saleItems SaleItem[]
 
-  @@unique([productId, size, branch])
   @@index([productId])
   @@index([branch])
 }

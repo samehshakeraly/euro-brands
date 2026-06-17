@@ -16,6 +16,8 @@ export interface VariantDTO {
   id: string;
   productId: string;
   size: string;
+  color: string | null;
+  sku: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
@@ -28,7 +30,9 @@ export interface ProductDTO {
   brand: string;
   category: CategoryValue;
   description: string | null;
-  sku: string | null;
+  productTypeId: string | null;
+  productTypeName: string | null;
+  productTypeCode: string | null;
   barcode: string | null;
   images: string[];
   variants: VariantDTO[];
@@ -46,6 +50,20 @@ export interface BrandDTO {
 
 export interface BrandInput {
   name: string;
+  category: CategoryValue;
+}
+
+// أنواع المنتجات
+export interface ProductTypeDTO {
+  id: string;
+  name: string;
+  code: string;
+  category: CategoryValue;
+}
+
+export interface ProductTypeInput {
+  name: string;
+  code: string;
   category: CategoryValue;
 }
 
@@ -80,6 +98,7 @@ export interface SaleItemDTO {
   productName: string;
   brand: string;
   size: string;
+  color?: string | null;
 }
 
 export interface SaleDTO {
@@ -124,6 +143,8 @@ export interface DeliveryInput {
 export interface VariantInput {
   id?: string; // موجود عند التعديل، غير موجود عند الإضافة
   size: string;
+  color?: string | null;
+  sku?: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
@@ -135,7 +156,7 @@ export interface ProductInput {
   brand: string;
   category: CategoryValue;
   description?: string | null;
-  sku?: string | null;
+  productTypeId?: string | null;
   barcode?: string | null;
   images: string[];
   variants: VariantInput[];
@@ -146,8 +167,11 @@ export interface ImportRow {
   name: string;
   brand: string;
   category: CategoryValue;
+  productTypeName?: string | null;
   branch: BranchValue;
   size: string;
+  color?: string | null;
+  sku?: string | null;
   quantity: number;
   price: number;
 }

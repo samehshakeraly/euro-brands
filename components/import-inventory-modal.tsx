@@ -18,6 +18,9 @@ import {
   BRANCH_LABELS,
   CATEGORIES,
   CATEGORY_LABELS,
+  COLORS,
+  COLOR_NAMES,
+  colorMeta,
   type BranchValue,
   type CategoryValue,
 } from "@/lib/constants";
@@ -25,13 +28,16 @@ import { formatNumber } from "@/lib/format";
 import type { ImportResult, ImportRow, ProductDTO } from "@/lib/types";
 
 const HEADERS = [
-  "المنتج",
-  "البراند",
   "الفئة",
-  "الفرع",
+  "النوع",
+  "البراند",
+  "المنتج",
+  "اللون",
   "المقاس",
+  "الفرع",
   "الكمية",
   "السعر",
+  "الكود",
 ];
 
 const CATEGORY_BY_LABEL = Object.fromEntries(
@@ -45,8 +51,11 @@ interface PreviewRow {
   name: string;
   brand: string;
   categoryLabel: string;
+  typeLabel: string;
   branchLabel: string;
   size: string;
+  color: string;
+  sku: string;
   quantity: string;
   price: string;
   parsed?: ImportRow;
@@ -59,7 +68,6 @@ function norm(v: unknown): string {
   return v == null ? "" : String(v).trim();
 }
 
-// قراءة قيمة العمود مع تجاهل الفراغات في رؤوس الأعمدة
 function pick(obj: Record<string, unknown>, header: string): unknown {
   if (header in obj) return obj[header];
   const key = Object.keys(obj).find((k) => k.trim() === header);
@@ -89,17 +97,23 @@ export function ImportInventoryModal({
     );
     if (!p) return "منتج جديد";
     const v = p.variants.find(
-      (vr) => vr.size === row.size && vr.branch === row.branch
+      (vr) =>
+        vr.size === row.size &&
+        vr.branch === row.branch &&
+        (vr.color ?? null) === (row.color ?? null)
     );
-    return v ? "تحديث الكمية" : "مقاس جديد";
+    return v ? "تحديث الكمية" : "متغيّر جديد";
   }
 
   function buildRow(obj: Record<string, unknown>): PreviewRow {
     const name = norm(pick(obj, "المنتج"));
     const brand = norm(pick(obj, "البراند"));
     const categoryLabel = norm(pick(obj, "الفئة"));
+    const typeLabel = norm(pick(obj, "النوع"));
     const branchLabel = norm(pick(obj, "الفرع"));
     const size = norm(pick(obj, "المقاس"));
+    const color = norm(pick(obj, "اللون"));
+    const sku = norm(pick(obj, "الكود"));
     const quantity = norm(pick(obj, "الكمية"));
     const price = norm(pick(obj, "السعر"));
 
@@ -124,6 +138,8 @@ export function ImportInventoryModal({
     else if (!size) error = "المقاس مفقود";
     else if (!Number.isFinite(qty) || qty < 0) error = "كمية غير صحيحة";
     else if (!Number.isFinite(prc) || prc < 0) error = "سعر غير صحيح";
+    else if (color && !COLOR_NAMES.includes(color))
+      error = "لون غير معروف";
 
     const valid = !error;
     const parsed: ImportRow | undefined = valid
@@ -131,8 +147,11 @@ export function ImportInventoryModal({
           name,
           brand,
           category: category!,
+          productTypeName: typeLabel || null,
           branch: branch!,
           size,
+          color: color || null,
+          sku: sku || null,
           quantity: Math.floor(qty),
           price: prc,
         }
@@ -142,8 +161,11 @@ export function ImportInventoryModal({
       name,
       brand,
       categoryLabel,
+      typeLabel,
       branchLabel,
       size,
+      color,
+      sku,
       quantity,
       price,
       parsed,
@@ -156,25 +178,72 @@ export function ImportInventoryModal({
   async function handleDownloadTemplate() {
     try {
       const XLSX = await import("xlsx");
-      const aoa = [
-        HEADERS,
-        ["تيشيرت قطن كلاسيك", "Zara", "ملابس", "حدائق المعادي", "M", 20, 350],
-        ["حذاء رياضي خفيف", "Nike", "أحذية", "زهراء المعادي", "42", 8, 1450],
-        ["عطر شرقي فاخر", "Lattafa", "عطور", "حدائق المعادي", "100ml", 15, 600],
+
+      const sampleRows = [
+        ["ملابس", "تيشرت", "Nike", "تيشرت Air Max", "أسود", "M", "حدائق المعادي", 20, 350, "NIK-TSHIRT-BLK-M-HAD"],
+        ["أحذية", "سنيكرز", "Nike", "حذاء Air Force", "أبيض", "42", "زهراء المعادي", 8, 1450, "NIK-SNK-WHT-42-ZAH"],
+        ["عطور", "عطر رجالي", "Lattafa", "عطر شرقي فاخر", "", "100ml", "حدائق المعادي", 15, 600, "LAT-MEN-DEF-100ML-HAD"],
       ];
+
+      const aoa = [HEADERS, ...sampleRows];
       const ws = XLSX.utils.aoa_to_sheet(aoa);
+
       ws["!cols"] = [
-        { wch: 26 },
-        { wch: 14 },
-        { wch: 10 },
-        { wch: 16 },
-        { wch: 8 },
-        { wch: 8 },
-        { wch: 10 },
+        { wch: 12 }, // الفئة
+        { wch: 14 }, // النوع
+        { wch: 14 }, // البراند
+        { wch: 24 }, // المنتج
+        { wch: 10 }, // اللون
+        { wch: 8 }, // المقاس
+        { wch: 16 }, // الفرع
+        { wch: 8 }, // الكمية
+        { wch: 10 }, // السعر
+        { wch: 26 }, // الكود
       ];
+
+      // قوائم منسدلة (Data Validation) — حتى الصف 1000
+      const categoryList = CATEGORIES.map((c) => CATEGORY_LABELS[c]).join(",");
+      const branchList = BRANCHES.map((b) => BRANCH_LABELS[b]).join(",");
+      const colorList = COLORS.map((c) => c.name).join(",");
+      ws["!dataValidation"] = [
+        {
+          sqref: "A2:A1000",
+          t: "List",
+          f: `"${categoryList}"`,
+        },
+        {
+          sqref: "G2:G1000",
+          t: "List",
+          f: `"${branchList}"`,
+        },
+        {
+          sqref: "E2:E1000",
+          t: "List",
+          f: `"${colorList}"`,
+        },
+      ];
+
       const wb = XLSX.utils.book_new();
       wb.Workbook = { Views: [{ RTL: true }] };
       XLSX.utils.book_append_sheet(wb, ws, "الجرد");
+
+      // ورقة مرجعية للقيم المعتمدة
+      const reference: (string | number)[][] = [
+        ["مرجع القيم المعتمدة"],
+        [],
+        ["الفئات"],
+        ...CATEGORIES.map((c) => [CATEGORY_LABELS[c]]),
+        [],
+        ["الفروع"],
+        ...BRANCHES.map((b) => [BRANCH_LABELS[b]]),
+        [],
+        ["الألوان"],
+        ...COLORS.map((c) => [c.name, c.code]),
+      ];
+      const wsRef = XLSX.utils.aoa_to_sheet(reference);
+      wsRef["!cols"] = [{ wch: 22 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, wsRef, "القيم المعتمدة");
+
       XLSX.writeFile(wb, "euro-brands-inventory-template.xlsx");
     } catch {
       toast.error("تعذّر إنشاء القالب");
@@ -216,7 +285,7 @@ export function ImportInventoryModal({
     try {
       const res = await apiPost<ImportResult>("/api/products/import", { rows });
       toast.success(
-        `تم الاستيراد: ${res.updatedVariants} تحديث · ${res.newVariants} مقاس جديد · ${res.newProducts} منتج جديد`
+        `تم الاستيراد: ${res.updatedVariants} تحديث · ${res.newVariants} متغيّر جديد · ${res.newProducts} منتج جديد`
       );
       onImported();
       handleClose();
@@ -245,8 +314,9 @@ export function ImportInventoryModal({
       {!preview ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            نزّل القالب، املأ الصفوف بالأعمدة: المنتج، البراند، الفئة، الفرع،
-            المقاس، الكمية، السعر، ثم ارفع الملف لتحديث المخزون بالجملة.
+            نزّل القالب بالأعمدة: الفئة، النوع، البراند، المنتج، اللون، المقاس،
+            الفرع، الكمية، السعر، الكود (SKU). الصفوف المطابقة تُحدَّث،
+            والجديدة تُضاف تلقائياً.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
@@ -278,8 +348,8 @@ export function ImportInventoryModal({
           />
           <div className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted">
             <FileSpreadsheet className="h-4 w-4 shrink-0" />
-            الصفوف المطابقة (نفس المنتج والمقاس والفرع) ستُحدَّث كميتها وسعرها،
-            والجديدة ستُضاف تلقائياً.
+            القالب يحتوي على قوائم منسدلة للفئة والفرع واللون، وورقة «القيم
+            المعتمدة» كمرجع. إذا تركت الكود فارغاً سيُولَّد تلقائياً.
           </div>
         </div>
       ) : (
@@ -298,48 +368,73 @@ export function ImportInventoryModal({
           </div>
 
           <div className="max-h-[50vh] overflow-auto rounded-lg border">
-            <table className="w-full min-w-[640px] text-right text-xs">
+            <table className="w-full min-w-[820px] text-right text-xs">
               <thead className="sticky top-0 bg-surface">
                 <tr className="border-b text-muted">
                   <th className="px-2 py-2 font-medium">المنتج</th>
                   <th className="px-2 py-2 font-medium">البراند</th>
                   <th className="px-2 py-2 font-medium">الفئة</th>
-                  <th className="px-2 py-2 font-medium">الفرع</th>
+                  <th className="px-2 py-2 font-medium">النوع</th>
+                  <th className="px-2 py-2 font-medium">اللون</th>
                   <th className="px-2 py-2 font-medium">المقاس</th>
+                  <th className="px-2 py-2 font-medium">الفرع</th>
                   <th className="px-2 py-2 font-medium">الكمية</th>
                   <th className="px-2 py-2 font-medium">السعر</th>
+                  <th className="px-2 py-2 font-medium">الكود</th>
                   <th className="px-2 py-2 font-medium">الحالة</th>
                 </tr>
               </thead>
               <tbody>
-                {preview.slice(0, 200).map((r, i) => (
-                  <tr
-                    key={i}
-                    className={cn(
-                      "border-b border-[var(--border)]",
-                      !r.valid && "bg-[rgba(217,83,79,0.08)]"
-                    )}
-                  >
-                    <td className="px-2 py-2 text-text">{r.name || "—"}</td>
-                    <td className="px-2 py-2 text-muted">{r.brand || "—"}</td>
-                    <td className="px-2 py-2 text-muted">
-                      {r.categoryLabel || "—"}
-                    </td>
-                    <td className="px-2 py-2 text-muted">
-                      {r.branchLabel || "—"}
-                    </td>
-                    <td className="px-2 py-2 text-text nums">{r.size || "—"}</td>
-                    <td className="px-2 py-2 text-text nums">{r.quantity}</td>
-                    <td className="px-2 py-2 text-text nums">{r.price}</td>
-                    <td className="px-2 py-2">
-                      {r.valid ? (
-                        <span className="text-success">{r.status}</span>
-                      ) : (
-                        <span className="text-danger">{r.error}</span>
+                {preview.slice(0, 200).map((r, i) => {
+                  const cm = colorMeta(r.color);
+                  return (
+                    <tr
+                      key={i}
+                      className={cn(
+                        "border-b border-[var(--border)]",
+                        !r.valid && "bg-[rgba(217,83,79,0.08)]"
                       )}
-                    </td>
-                  </tr>
-                ))}
+                    >
+                      <td className="px-2 py-2 text-text">{r.name || "—"}</td>
+                      <td className="px-2 py-2 text-muted">{r.brand || "—"}</td>
+                      <td className="px-2 py-2 text-muted">
+                        {r.categoryLabel || "—"}
+                      </td>
+                      <td className="px-2 py-2 text-muted">
+                        {r.typeLabel || "—"}
+                      </td>
+                      <td className="px-2 py-2 text-muted">
+                        {r.color ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            {cm && (
+                              <span
+                                className="inline-block h-3 w-3 rounded-full border"
+                                style={{ backgroundColor: cm.hex }}
+                              />
+                            )}
+                            {r.color}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-text nums">{r.size || "—"}</td>
+                      <td className="px-2 py-2 text-muted">
+                        {r.branchLabel || "—"}
+                      </td>
+                      <td className="px-2 py-2 text-text nums">{r.quantity}</td>
+                      <td className="px-2 py-2 text-text nums">{r.price}</td>
+                      <td className="px-2 py-2 text-muted nums">{r.sku || "—"}</td>
+                      <td className="px-2 py-2">
+                        {r.valid ? (
+                          <span className="text-success">{r.status}</span>
+                        ) : (
+                          <span className="text-danger">{r.error}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

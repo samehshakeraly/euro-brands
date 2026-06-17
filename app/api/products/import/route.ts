@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, handleServerError } from "@/lib/api";
 import { parseImportRows, ValidationError } from "@/lib/validate";
 import { MOCK_MODE, mockImportInventory } from "@/lib/mock-store";
+import { generateVariantSku } from "@/lib/constants";
 import type { ImportResult } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +26,37 @@ export async function POST(req: Request) {
     await prisma.$transaction(
       async (tx) => {
         for (const row of rows) {
+          // نوع المنتج (اختياري) — أنشئه عند الحاجة
+          let productTypeId: string | null = null;
+          let productTypeCode: string | null = null;
+          if (row.productTypeName) {
+            const pt = await tx.productType.upsert({
+              where: {
+                name_category: {
+                  name: row.productTypeName,
+                  category: row.category as Category,
+                },
+              },
+              update: {},
+              create: {
+                name: row.productTypeName,
+                code: row.productTypeName
+                  .replace(/\s+/g, "")
+                  .slice(0, 6)
+                  .toUpperCase(),
+                category: row.category as Category,
+              },
+            });
+            productTypeId = pt.id;
+            productTypeCode = pt.code;
+          }
+
           let product = await tx.product.findFirst({
             where: {
               name: { equals: row.name, mode: "insensitive" },
               brand: { equals: row.brand, mode: "insensitive" },
             },
-            select: { id: true },
+            select: { id: true, productTypeId: true },
           });
 
           if (!product) {
@@ -39,28 +65,47 @@ export async function POST(req: Request) {
                 name: row.name,
                 brand: row.brand,
                 category: row.category as Category,
+                productTypeId,
                 images: [],
               },
-              select: { id: true },
+              select: { id: true, productTypeId: true },
             });
             result.newProducts++;
+          } else if (productTypeId && !product.productTypeId) {
+            await tx.product.update({
+              where: { id: product.id },
+              data: { productTypeId },
+            });
           }
 
-          const existing = await tx.productVariant.findUnique({
+          const autoSku =
+            row.sku ??
+            generateVariantSku({
+              brand: row.brand,
+              typeCode: productTypeCode,
+              colorCode: null,
+              size: row.size,
+              branch: row.branch,
+            });
+
+          const existing = await tx.productVariant.findFirst({
             where: {
-              productId_size_branch: {
-                productId: product.id,
-                size: row.size,
-                branch: row.branch as Branch,
-              },
+              productId: product.id,
+              size: row.size,
+              branch: row.branch as Branch,
+              color: row.color ?? null,
             },
-            select: { id: true },
+            select: { id: true, sku: true },
           });
 
           if (existing) {
             await tx.productVariant.update({
               where: { id: existing.id },
-              data: { quantity: row.quantity, price: row.price },
+              data: {
+                quantity: row.quantity,
+                price: row.price,
+                sku: row.sku ?? existing.sku ?? autoSku,
+              },
             });
             result.updatedVariants++;
           } else {
@@ -68,6 +113,8 @@ export async function POST(req: Request) {
               data: {
                 productId: product.id,
                 size: row.size,
+                color: row.color ?? null,
+                sku: autoSku,
                 branch: row.branch as Branch,
                 quantity: row.quantity,
                 price: row.price,

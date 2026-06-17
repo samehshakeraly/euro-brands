@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload,
@@ -10,19 +10,29 @@ import {
   Save,
   Link2,
   Copy,
+  RefreshCcw,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { AddBrandModal } from "@/components/add-brand-modal";
+import { AddTypeModal } from "@/components/add-type-modal";
 import { apiPost, apiPut, uploadImage } from "@/lib/client";
 import { useFetch } from "@/lib/use-fetch";
-import type { BrandDTO, ProductDTO, ProductInput } from "@/lib/types";
+import type {
+  BrandDTO,
+  ProductDTO,
+  ProductInput,
+  ProductTypeDTO,
+} from "@/lib/types";
 import {
   BRANCHES,
   BRANCH_LABELS,
   CATEGORIES,
   CATEGORY_LABELS,
+  COLORS,
+  colorMeta,
+  generateVariantSku,
   sizesForCategory,
   type BranchValue,
   type CategoryValue,
@@ -33,6 +43,9 @@ interface VariantRow {
   id?: string;
   branch: BranchValue;
   size: string;
+  color: string; // الاسم العربي، فارغ = بلا لون
+  sku: string;
+  skuOverridden: boolean; // إذا كان المستخدم عدّل SKU يدوياً
   quantity: string;
   minQuantity: string;
   price: string;
@@ -45,13 +58,15 @@ function emptyRow(branch: BranchValue = "HADAYEK"): VariantRow {
     clientId: uid(),
     branch,
     size: "",
+    color: "",
+    sku: "",
+    skuOverridden: false,
     quantity: "0",
     minQuantity: "5",
     price: "0",
   };
 }
 
-// حقل بعنوان يظهر على الموبايل فقط (العناوين تظهر كرؤوس أعمدة على سطح المكتب)
 function VariantField({
   label,
   children,
@@ -79,8 +94,10 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   const [category, setCategory] = useState<CategoryValue>(
     initial?.category ?? "CLOTHES"
   );
+  const [productTypeId, setProductTypeId] = useState<string>(
+    initial?.productTypeId ?? ""
+  );
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [sku, setSku] = useState(initial?.sku ?? "");
   const [barcode, setBarcode] = useState(initial?.barcode ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
   const [urlInput, setUrlInput] = useState("");
@@ -91,6 +108,9 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           id: v.id,
           branch: v.branch,
           size: v.size,
+          color: v.color ?? "",
+          sku: v.sku ?? "",
+          skuOverridden: !!v.sku,
           quantity: String(v.quantity),
           minQuantity: String(v.minQuantity ?? 5),
           price: String(v.price),
@@ -102,14 +122,35 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [brandModalOpen, setBrandModalOpen] = useState(false);
+  const [typeModalOpen, setTypeModalOpen] = useState(false);
 
   const sizeOptions = sizesForCategory(category);
 
-  // البراندات حسب الفئة المحددة
   const { data: brandsData, refetch: refetchBrands } = useFetch<BrandDTO[]>(
     `/api/brands?category=${category}`
   );
   const brandOptions = (brandsData ?? []).map((b) => b.name);
+
+  const { data: typesData, refetch: refetchTypes } = useFetch<ProductTypeDTO[]>(
+    `/api/product-types?category=${category}`
+  );
+  const typeOptions = typesData ?? [];
+
+  const selectedType = useMemo(
+    () => typeOptions.find((t) => t.id === productTypeId) ?? null,
+    [typeOptions, productTypeId]
+  );
+
+  function autoSkuFor(row: VariantRow): string {
+    if (!row.size || !brand) return "";
+    return generateVariantSku({
+      brand,
+      typeCode: selectedType?.code ?? null,
+      colorCode: colorMeta(row.color)?.code ?? null,
+      size: row.size,
+      branch: row.branch,
+    });
+  }
 
   async function uploadFiles(files: File[]) {
     for (const file of files) {
@@ -140,11 +181,60 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
   function updateRow(clientId: string, patch: Partial<VariantRow>) {
     setVariants((rows) =>
-      rows.map((r) => (r.clientId === clientId ? { ...r, ...patch } : r))
+      rows.map((r) => {
+        if (r.clientId !== clientId) return r;
+        const merged = { ...r, ...patch };
+        // أعد توليد SKU إذا تغيّر أي حقل مرتبط ولم يَتدخّل المستخدم يدوياً
+        const touchedAutoField =
+          "size" in patch ||
+          "branch" in patch ||
+          "color" in patch;
+        if (touchedAutoField && !merged.skuOverridden) {
+          merged.sku = generateVariantSku({
+            brand,
+            typeCode: selectedType?.code ?? null,
+            colorCode: colorMeta(merged.color)?.code ?? null,
+            size: merged.size,
+            branch: merged.branch,
+          });
+        }
+        return merged;
+      })
     );
   }
 
-  // نسخ كل الصفوف إلى الفرع الآخر
+  function regenerateSku(row: VariantRow) {
+    const sku = autoSkuFor(row);
+    setVariants((rows) =>
+      rows.map((r) =>
+        r.clientId === row.clientId ? { ...r, sku, skuOverridden: false } : r
+      )
+    );
+  }
+
+  // إعادة توليد جميع أكواد SKU عند تغيير البراند أو النوع (للصفوف غير المخصصة)
+  function regenerateAllAutoSkus(updatedBrand: string, updatedTypeId: string) {
+    setVariants((rows) =>
+      rows.map((r) => {
+        if (r.skuOverridden) return r;
+        const t = typeOptions.find((x) => x.id === updatedTypeId);
+        return {
+          ...r,
+          sku:
+            r.size && updatedBrand
+              ? generateVariantSku({
+                  brand: updatedBrand,
+                  typeCode: t?.code ?? null,
+                  colorCode: colorMeta(r.color)?.code ?? null,
+                  size: r.size,
+                  branch: r.branch,
+                })
+              : "",
+        };
+      })
+    );
+  }
+
   function copyToOtherBranch() {
     setVariants((rows) => {
       const additions: VariantRow[] = [];
@@ -152,13 +242,31 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         const other: BranchValue =
           r.branch === "HADAYEK" ? "ZAHRAA" : "HADAYEK";
         const exists = rows.some(
-          (x) => x.size === r.size && x.branch === other
+          (x) =>
+            x.size === r.size && x.color === r.color && x.branch === other
         );
         const willAdd = additions.some(
-          (x) => x.size === r.size && x.branch === other
+          (x) =>
+            x.size === r.size && x.color === r.color && x.branch === other
         );
         if (r.size && !exists && !willAdd) {
-          additions.push({ ...r, clientId: uid(), id: undefined, branch: other });
+          const cloned: VariantRow = {
+            ...r,
+            clientId: uid(),
+            id: undefined,
+            branch: other,
+            skuOverridden: false,
+            sku: r.size
+              ? generateVariantSku({
+                  brand,
+                  typeCode: selectedType?.code ?? null,
+                  colorCode: colorMeta(r.color)?.code ?? null,
+                  size: r.size,
+                  branch: other,
+                })
+              : "",
+          };
+          additions.push(cloned);
         }
       }
       if (additions.length === 0) {
@@ -177,26 +285,37 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     if (variants.length === 0) return toast.error("أضف صفاً واحداً على الأقل");
 
     const seen = new Set<string>();
+    const seenSkus = new Set<string>();
     for (const r of variants) {
       if (!r.size) return toast.error("يجب اختيار المقاس في كل الصفوف");
-      const key = `${r.size}__${r.branch}`;
+      const key = `${r.size}__${r.branch}__${r.color}`;
       if (seen.has(key))
-        return toast.error(`تكرار للمقاس ${r.size} في نفس الفرع`);
+        return toast.error(
+          `تكرار: ${r.size}${r.color ? ` (${r.color})` : ""} في ${BRANCH_LABELS[r.branch]}`
+        );
       seen.add(key);
+      const trimmedSku = r.sku.trim();
+      if (trimmedSku) {
+        if (seenSkus.has(trimmedSku))
+          return toast.error(`تكرار لكود SKU: ${trimmedSku}`);
+        seenSkus.add(trimmedSku);
+      }
     }
 
     const payload: ProductInput = {
       name: name.trim(),
       brand: brand.trim(),
       category,
+      productTypeId: productTypeId || null,
       description: description.trim() || null,
-      sku: sku.trim() || null,
       barcode: barcode.trim() || null,
       images,
       variants: variants.map((r) => ({
         id: r.id,
         branch: r.branch,
         size: r.size,
+        color: r.color || null,
+        sku: r.sku.trim() || null,
         quantity: Math.max(0, Math.floor(Number(r.quantity) || 0)),
         minQuantity: Math.max(0, Math.floor(Number(r.minQuantity) || 0)),
         price: Math.max(0, Number(r.price) || 0),
@@ -244,7 +363,8 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               value={category}
               onChange={(e) => {
                 setCategory(e.target.value as CategoryValue);
-                setBrand(""); // إعادة ضبط البراند عند تغيير الفئة
+                setBrand("");
+                setProductTypeId("");
               }}
             >
               {CATEGORIES.map((c) => (
@@ -255,14 +375,55 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
             </select>
           </div>
 
-          {/* البراند: قائمة منسدلة حسب الفئة + زر إضافة */}
+          {/* النوع: قائمة منسدلة حسب الفئة + زر إضافة */}
+          <div>
+            <label className="label">النوع</label>
+            <div className="flex gap-2">
+              <select
+                className="input"
+                value={productTypeId}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setProductTypeId(newId);
+                  regenerateAllAutoSkus(brand, newId);
+                }}
+              >
+                <option value="">اختر النوع</option>
+                {typeOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setTypeModalOpen(true)}
+                className="btn btn-secondary flex-shrink-0"
+                title="إضافة نوع جديد"
+              >
+                <Plus className="h-4 w-4" />
+                نوع جديد
+              </button>
+            </div>
+            {typeOptions.length === 0 && (
+              <p className="mt-1 text-xs text-muted">
+                لا توجد أنواع لهذه الفئة — أضف واحداً عبر زر «نوع جديد».
+              </p>
+            )}
+          </div>
+
+          {/* البراند */}
           <div>
             <label className="label">البراند *</label>
             <div className="flex gap-2">
               <select
                 className="input"
                 value={brand}
-                onChange={(e) => setBrand(e.target.value)}
+                onChange={(e) => {
+                  const newBrand = e.target.value;
+                  setBrand(newBrand);
+                  regenerateAllAutoSkus(newBrand, productTypeId);
+                }}
               >
                 <option value="">اختر البراند</option>
                 {brandOptions.map((b) => (
@@ -292,37 +453,13 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           </div>
 
           <div>
-            <label className="label">كود المنتج (SKU)</label>
-            <input
-              className="input"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              placeholder="مثال: NK-001"
-            />
-          </div>
-
-          <div>
             <label className="label">الباركود</label>
-            <div className="flex gap-2">
-              <input
-                className="input nums"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                placeholder="امسح أو أدخل الباركود"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  sku.trim()
-                    ? setBarcode(sku.trim())
-                    : toast.error("أدخل كود SKU أولاً")
-                }
-                className="btn btn-secondary flex-shrink-0 text-xs"
-                title="توليد الباركود من كود SKU"
-              >
-                من SKU
-              </button>
-            </div>
+            <input
+              className="input nums"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder="امسح أو أدخل الباركود"
+            />
           </div>
 
           <div className="sm:col-span-2">
@@ -337,7 +474,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         </div>
       </Card>
 
-      {/* الصور — منطقة سحب وإفلات */}
+      {/* الصور */}
       <Card className="p-5">
         <h2 className="mb-1 text-base font-bold text-text">صور المنتج</h2>
         <p className="mb-4 text-xs text-muted">حتى 3 صور — اسحب وأفلت أو اختر ملفاً</p>
@@ -426,10 +563,12 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         )}
       </Card>
 
-      {/* المقاسات والكميات */}
+      {/* المقاسات والكميات والألوان */}
       <Card className="p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-bold text-text">المقاسات والكميات</h2>
+          <h2 className="text-base font-bold text-text">
+            المقاسات والألوان والكميات
+          </h2>
           <div className="flex gap-2">
             <button
               type="button"
@@ -457,113 +596,168 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         </div>
 
         <div className="space-y-3">
-          <div className="hidden gap-3 px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[1.3fr_1fr_0.9fr_0.9fr_1.1fr_auto]">
-            <span>الفرع</span>
-            <span>المقاس</span>
-            <span>الكمية</span>
-            <span>الحد الأدنى</span>
-            <span>السعر (ج.م)</span>
-            <span></span>
-          </div>
-
-          {variants.map((row) => (
-            <div
-              key={row.clientId}
-              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.3fr_1fr_0.9fr_0.9fr_1.1fr_auto] sm:items-start sm:border-0 sm:p-0"
-            >
-              <VariantField label="الفرع">
-                <select
-                  className="input"
-                  value={row.branch}
-                  onChange={(e) =>
-                    updateRow(row.clientId, {
-                      branch: e.target.value as BranchValue,
-                    })
-                  }
-                >
-                  {BRANCHES.map((b) => (
-                    <option key={b} value={b}>
-                      {BRANCH_LABELS[b]}
-                    </option>
-                  ))}
-                </select>
-              </VariantField>
-
-              <VariantField label="المقاس">
-                <select
-                  className="input"
-                  value={row.size}
-                  onChange={(e) =>
-                    updateRow(row.clientId, { size: e.target.value })
-                  }
-                >
-                  <option value="">المقاس</option>
-                  {sizeOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                  {row.size && !sizeOptions.includes(row.size) && (
-                    <option value={row.size}>{row.size}</option>
-                  )}
-                </select>
-              </VariantField>
-
-              <VariantField label="الكمية">
-                <input
-                  type="number"
-                  min={0}
-                  className="input nums"
-                  value={row.quantity}
-                  onChange={(e) =>
-                    updateRow(row.clientId, { quantity: e.target.value })
-                  }
-                />
-              </VariantField>
-
-              <VariantField label="الحد الأدنى">
-                <input
-                  type="number"
-                  min={0}
-                  className="input nums"
-                  value={row.minQuantity}
-                  onChange={(e) =>
-                    updateRow(row.clientId, { minQuantity: e.target.value })
-                  }
-                />
-              </VariantField>
-
-              <VariantField label="السعر (ج.م)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="input nums"
-                  value={row.price}
-                  onChange={(e) =>
-                    updateRow(row.clientId, { price: e.target.value })
-                  }
-                />
-              </VariantField>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setVariants((rows) =>
-                    rows.length === 1
-                      ? rows
-                      : rows.filter((r) => r.clientId !== row.clientId)
-                  )
-                }
-                disabled={variants.length === 1}
-                className="btn btn-ghost col-span-2 h-11 w-full gap-2 text-danger hover:bg-[rgba(217,83,79,0.12)] disabled:opacity-30 sm:col-span-1 sm:h-[38px] sm:w-[38px] sm:!px-0"
-                aria-label="حذف الصف"
+          {variants.map((row) => {
+            const meta = colorMeta(row.color);
+            return (
+              <div
+                key={row.clientId}
+                className="rounded-lg border p-3"
               >
-                <Trash2 className="h-4 w-4" />
-                <span className="sm:hidden">حذف الصف</span>
-              </button>
-            </div>
-          ))}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1.1fr_0.7fr_1fr_0.7fr_0.7fr_0.9fr_auto]">
+                  <VariantField label="الفرع">
+                    <select
+                      className="input"
+                      value={row.branch}
+                      onChange={(e) =>
+                        updateRow(row.clientId, {
+                          branch: e.target.value as BranchValue,
+                        })
+                      }
+                    >
+                      {BRANCHES.map((b) => (
+                        <option key={b} value={b}>
+                          {BRANCH_LABELS[b]}
+                        </option>
+                      ))}
+                    </select>
+                  </VariantField>
+
+                  <VariantField label="المقاس">
+                    <select
+                      className="input"
+                      value={row.size}
+                      onChange={(e) =>
+                        updateRow(row.clientId, { size: e.target.value })
+                      }
+                    >
+                      <option value="">المقاس</option>
+                      {sizeOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                      {row.size && !sizeOptions.includes(row.size) && (
+                        <option value={row.size}>{row.size}</option>
+                      )}
+                    </select>
+                  </VariantField>
+
+                  <VariantField label="اللون">
+                    <div className="flex items-center gap-2">
+                      {meta && (
+                        <span
+                          className="inline-block h-5 w-5 shrink-0 rounded-full border"
+                          style={{ backgroundColor: meta.hex }}
+                          aria-label={meta.name}
+                        />
+                      )}
+                      <select
+                        className="input"
+                        value={row.color}
+                        onChange={(e) =>
+                          updateRow(row.clientId, { color: e.target.value })
+                        }
+                      >
+                        <option value="">بلا لون</option>
+                        {COLORS.map((c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </VariantField>
+
+                  <VariantField label="الكمية">
+                    <input
+                      type="number"
+                      min={0}
+                      className="input nums"
+                      value={row.quantity}
+                      onChange={(e) =>
+                        updateRow(row.clientId, { quantity: e.target.value })
+                      }
+                    />
+                  </VariantField>
+
+                  <VariantField label="الحد الأدنى">
+                    <input
+                      type="number"
+                      min={0}
+                      className="input nums"
+                      value={row.minQuantity}
+                      onChange={(e) =>
+                        updateRow(row.clientId, {
+                          minQuantity: e.target.value,
+                        })
+                      }
+                    />
+                  </VariantField>
+
+                  <VariantField label="السعر (ج.م)">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="input nums"
+                      value={row.price}
+                      onChange={(e) =>
+                        updateRow(row.clientId, { price: e.target.value })
+                      }
+                    />
+                  </VariantField>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVariants((rows) =>
+                        rows.length === 1
+                          ? rows
+                          : rows.filter((r) => r.clientId !== row.clientId)
+                      )
+                    }
+                    disabled={variants.length === 1}
+                    className="btn btn-ghost col-span-2 h-11 w-full gap-2 text-danger hover:bg-[rgba(217,83,79,0.12)] disabled:opacity-30 sm:col-span-1 sm:h-[38px] sm:w-[38px] sm:!px-0"
+                    aria-label="حذف الصف"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sm:hidden">حذف الصف</span>
+                  </button>
+                </div>
+
+                {/* SKU للمتغيّر — قابل للتعديل وقابل لإعادة التوليد */}
+                <div className="mt-3 flex items-center gap-2 border-t pt-3">
+                  <label className="text-xs font-medium text-muted shrink-0">
+                    كود SKU
+                  </label>
+                  <input
+                    className="input nums flex-1"
+                    value={row.sku}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setVariants((rows) =>
+                        rows.map((r) =>
+                          r.clientId === row.clientId
+                            ? { ...r, sku: v, skuOverridden: true }
+                            : r
+                        )
+                      );
+                    }}
+                    placeholder={autoSkuFor(row) || "—"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => regenerateSku(row)}
+                    className="btn btn-ghost h-9 w-9 !px-0 text-accent hover:bg-accent-soft"
+                    aria-label="إعادة توليد"
+                    title="إعادة توليد تلقائياً"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
@@ -588,7 +782,19 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         onClose={() => setBrandModalOpen(false)}
         onAdded={(b) => {
           setBrand(b.name);
+          regenerateAllAutoSkus(b.name, productTypeId);
           refetchBrands();
+        }}
+      />
+
+      <AddTypeModal
+        open={typeModalOpen}
+        category={category}
+        onClose={() => setTypeModalOpen(false)}
+        onAdded={(t) => {
+          setProductTypeId(t.id);
+          regenerateAllAutoSkus(brand, t.id);
+          refetchTypes();
         }}
       />
     </form>

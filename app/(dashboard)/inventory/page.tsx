@@ -103,13 +103,12 @@ export default function InventoryPage() {
   const filtered = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
     const result = products.filter((p) => {
-      if (
-        q &&
-        !`${p.name} ${p.brand} ${p.sku ?? ""} ${p.barcode ?? ""}`
-          .toLowerCase()
-          .includes(q)
-      )
-        return false;
+      if (q) {
+        const haystack = `${p.name} ${p.brand} ${p.barcode ?? ""} ${p.variants
+          .map((v) => v.sku ?? "")
+          .join(" ")}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       if (filters.category && p.category !== filters.category) return false;
       if (filters.brand && p.brand !== filters.brand) return false;
       if (filters.image === "with" && p.images.length === 0) return false;
@@ -154,13 +153,15 @@ export default function InventoryPage() {
         name: `نسخة من ${product.name}`,
         brand: product.brand,
         category: product.category,
+        productTypeId: product.productTypeId,
         description: product.description,
-        sku: null,
         barcode: null,
         images: product.images,
         variants: product.variants.map((v) => ({
           branch: v.branch,
           size: v.size,
+          color: v.color,
+          sku: null, // يُولَّد تلقائياً للنسخة
           quantity: v.quantity,
           minQuantity: v.minQuantity,
           price: v.price,
@@ -486,9 +487,9 @@ function ProductCard({
             <Package className="h-10 w-10" />
           </div>
         )}
-        {product.sku && (
-          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white nums">
-            {product.sku}
+        {product.productTypeName && (
+          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+            {product.productTypeName}
           </span>
         )}
       </div>
@@ -581,9 +582,9 @@ function ProductListRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-medium text-text">{product.name}</p>
-          {product.sku && (
-            <span className="hidden text-xs text-muted nums sm:inline">
-              · {product.sku}
+          {product.productTypeName && (
+            <span className="hidden text-xs text-muted sm:inline">
+              · {product.productTypeName}
             </span>
           )}
         </div>

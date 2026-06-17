@@ -19,7 +19,7 @@ const saleInclude = {
   items: {
     include: {
       product: { select: { name: true, brand: true } },
-      variant: { select: { size: true } },
+      variant: { select: { size: true, color: true } },
     },
   },
 } satisfies Prisma.SaleInclude;
