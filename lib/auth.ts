@@ -3,80 +3,92 @@
 // أي شخص لديه أدوات المطوّر في المتصفح يستطيع تجاوزها في ثوانٍ.
 // للأمان الفعلي يلزم تسجيل دخول حقيقي عبر الخادم وكوكيز HttpOnly.
 
-const HASH_KEY = "eb-auth-hash";
 const SESSION_KEY = "eb-auth-session";
 const SESSION_HOURS = 24;
 
-export const DEFAULT_PASSWORD = "0000";
 export const LOGO_PATH = "/logo.svg"; // غيّر لـ "/logo.png" بعد رفع الصورة
 
-// SHA-256 hex عبر Web Crypto API (متاحة في المتصفحات الحديثة)
-export async function sha256(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+// ----------------------------------------------------
+//  الأدوار وكلمات المرور
+// ----------------------------------------------------
+export type Role = "ADMIN" | "CASHIER";
+
+export const ROLE_LABELS: Record<Role, string> = {
+  ADMIN: "مدير",
+  CASHIER: "كاشير",
+};
+
+// كلمة المرور الثابتة لكل دور
+const ROLE_PASSWORDS: Record<string, Role> = {
+  "2021": "ADMIN",
+  "0000": "CASHIER",
+};
+
+export function roleForPassword(password: string): Role | null {
+  return ROLE_PASSWORDS[password.trim()] ?? null;
 }
 
-// تشفير كلمة المرور الحالية (المخزّنة أو الافتراضية)
-export async function getStoredHash(): Promise<string> {
-  const stored = localStorage.getItem(HASH_KEY);
-  if (stored) return stored;
-  return sha256(DEFAULT_PASSWORD);
+// الصفحات المسموح بها للكاشير (الباقي للمدير فقط)
+export const CASHIER_ALLOWED_PATHS = ["/pos"];
+
+export function canAccessPath(role: Role, pathname: string): boolean {
+  if (role === "ADMIN") return true;
+  return CASHIER_ALLOWED_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
 }
 
-export function setStoredHash(hash: string) {
-  localStorage.setItem(HASH_KEY, hash);
+// ----------------------------------------------------
+//  الجلسة
+// ----------------------------------------------------
+export interface Session {
+  name: string;
+  role: Role;
+  expiresAt: number;
 }
 
-// إنشاء جلسة لمدة 24 ساعة
-export function startSession() {
-  const expiresAt = Date.now() + SESSION_HOURS * 60 * 60 * 1000;
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ expiresAt }));
+export function getSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Session;
+    if (
+      !s ||
+      typeof s.expiresAt !== "number" ||
+      Date.now() >= s.expiresAt ||
+      (s.role !== "ADMIN" && s.role !== "CASHIER")
+    ) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+export function isSessionValid(): boolean {
+  return getSession() !== null;
+}
+
+export function getCurrentUser(): { name: string; role: Role } | null {
+  const s = getSession();
+  return s ? { name: s.name, role: s.role } : null;
 }
 
 export function endSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-// هل توجد جلسة صالحة الآن؟
-export function isSessionValid(): boolean {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return false;
-    const { expiresAt } = JSON.parse(raw) as { expiresAt: number };
-    if (typeof expiresAt !== "number" || Date.now() >= expiresAt) {
-      localStorage.removeItem(SESSION_KEY);
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// محاولة تسجيل الدخول؛ يعيد true عند نجاح المطابقة
-export async function tryLogin(password: string): Promise<boolean> {
-  const inputHash = await sha256(password);
-  const storedHash = await getStoredHash();
-  if (inputHash !== storedHash) return false;
-  startSession();
-  return true;
-}
-
-// تغيير كلمة المرور (يتطلب الحالية)
-export async function changePassword(
-  current: string,
-  next: string
-): Promise<{ ok: boolean; error?: string }> {
-  if (!next || next.length < 4)
-    return { ok: false, error: "كلمة المرور الجديدة قصيرة جداً (4 أحرف على الأقل)" };
-  const currHash = await sha256(current);
-  const stored = await getStoredHash();
-  if (currHash !== stored)
-    return { ok: false, error: "كلمة المرور الحالية غير صحيحة" };
-  setStoredHash(await sha256(next));
-  startSession();
-  return { ok: true };
+// تسجيل الدخول: يعيد الدور عند نجاح كلمة المرور، وإلا null
+export function login(name: string, password: string): Role | null {
+  const role = roleForPassword(password);
+  if (!role) return null;
+  const session: Session = {
+    name: name.trim() || ROLE_LABELS[role],
+    role,
+    expiresAt: Date.now() + SESSION_HOURS * 60 * 60 * 1000,
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  return role;
 }

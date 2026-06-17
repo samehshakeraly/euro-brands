@@ -21,6 +21,7 @@ import { AddTypeModal } from "@/components/add-type-modal";
 import { apiPost, apiPut, uploadImage } from "@/lib/client";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/cn";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 import type {
   BrandDTO,
   ProductDTO,
@@ -337,9 +338,17 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
       if (isEdit) {
         await apiPut(`/api/products/${initial!.id}`, payload);
         toast.success("تم حفظ التعديلات");
+        void logActivity(
+          ACTIVITY_ACTIONS.EDIT_PRODUCT,
+          `${payload.name} — ${payload.brand}`
+        );
       } else {
         await apiPost("/api/products", payload);
         toast.success("تمت إضافة المنتج");
+        void logActivity(
+          ACTIVITY_ACTIONS.ADD_PRODUCT,
+          `${payload.name} — ${payload.brand}`
+        );
       }
       router.push("/inventory");
       router.refresh();

@@ -37,6 +37,7 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 
 interface Filters {
   search: string;
@@ -133,6 +134,10 @@ export default function InventoryPage() {
     try {
       await apiDelete(`/api/products/${toDelete.id}`);
       toast.success("تم حذف المنتج بنجاح");
+      void logActivity(
+        ACTIVITY_ACTIONS.DELETE_PRODUCT,
+        `${toDelete.name} — ${toDelete.brand}`
+      );
       setToDelete(null);
       refetch();
     } catch (e) {

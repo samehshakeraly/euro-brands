@@ -30,6 +30,8 @@ function colorCodeFor(color: string | null): string | null {
 import { ValidationError } from "./validate";
 import type { NormProduct, NormSale } from "./insights-analytics";
 import type {
+  ActivityLogDTO,
+  ActivityLogInput,
   BrandDTO,
   DashboardStats,
   ImportResult,
@@ -104,6 +106,7 @@ interface MSale {
   customerName: string | null;
   customerPhone: string | null;
   customerNotes: string | null;
+  cashierName: string | null;
   paymentMethod: PaymentMethodValue;
   transferMethod: TransferMethodValue | null;
   invoiceNotes: string | null;
@@ -128,11 +131,21 @@ interface MBrand {
   category: CategoryValue;
 }
 
+interface MActivity {
+  id: string;
+  userName: string;
+  userRole: string;
+  action: string;
+  details: string | null;
+  createdAt: Date;
+}
+
 interface Store {
   products: MProduct[];
   sales: MSale[];
   brands: MBrand[];
   productTypes: MProductType[];
+  activityLogs: MActivity[];
   seq: number;
 }
 
@@ -159,6 +172,7 @@ function buildStore(): Store {
     sales: [],
     brands: [],
     productTypes: [],
+    activityLogs: [],
     seq: 0,
   };
   const id = (p: string) => `${p}_${++store.seq}`;
@@ -392,6 +406,9 @@ function buildStore(): Store {
     ["", ""],
   ];
 
+  // كاشيرون تجريبيون لتوزيع الفواتير عليهم (لإظهار «أداء الكاشيرين»)
+  const cashiers = ["محمود", "إسلام", "ندى"];
+
   const totalSalesToGenerate = 42;
   for (let i = 0; i < totalSalesToGenerate; i++) {
     // أول 5 فواتير تكون اليوم لإظهار "مبيعات اليوم"
@@ -523,6 +540,7 @@ function buildStore(): Store {
       customerName: cName || null,
       customerPhone: cPhone || null,
       customerNotes: null,
+      cashierName: cashiers[Math.floor(rng() * cashiers.length)],
       paymentMethod,
       transferMethod,
       invoiceNotes: null,
@@ -571,6 +589,25 @@ function buildStore(): Store {
       }
     }
   }
+
+  // بعض سجلات النشاط التجريبية (لعرض الصفحة لدى المدير)
+  const seedLogs: [string, string, string, string | null][] = [
+    ["محمود", "CASHIER", "تسجيل دخول", null],
+    ["إسلام", "CASHIER", "تسجيل دخول", null],
+    ["المدير", "ADMIN", "تسجيل دخول", null],
+    ["محمود", "CASHIER", "إنشاء فاتورة", "فاتورة #000001"],
+    ["المدير", "ADMIN", "إضافة منتج", "هودي بقلنسوة"],
+  ];
+  seedLogs.forEach(([userName, userRole, action, details], i) => {
+    store.activityLogs.push({
+      id: id("al"),
+      userName,
+      userRole,
+      action,
+      details,
+      createdAt: new Date(now.getTime() - (i + 1) * 3600_000),
+    });
+  });
 
   return store;
 }
@@ -647,6 +684,7 @@ function shapeSale(s: MSale): SaleDTO {
     customerName: s.customerName,
     customerPhone: s.customerPhone,
     customerNotes: s.customerNotes,
+    cashierName: s.cashierName ?? null,
     paymentMethod: s.paymentMethod,
     transferMethod: s.transferMethod,
     invoiceNotes: s.invoiceNotes,
@@ -1175,6 +1213,54 @@ export function mockSeedProductTypes(): {
 }
 
 // ----------------------------------------------------
+//  سجل النشاط
+// ----------------------------------------------------
+export function mockListActivity(sp: URLSearchParams): ActivityLogDTO[] {
+  const user = sp.get("user")?.trim();
+  const from = sp.get("from") ? new Date(sp.get("from")!) : null;
+  const to = sp.get("to") ? new Date(sp.get("to")!) : null;
+  const limit = Math.min(Number(sp.get("limit")) || 500, 1000);
+
+  return store.activityLogs
+    .filter((a) => {
+      if (user && a.userName !== user) return false;
+      if (from && a.createdAt < from) return false;
+      if (to && a.createdAt > to) return false;
+      return true;
+    })
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map((a) => ({
+      id: a.id,
+      userName: a.userName,
+      userRole: a.userRole,
+      action: a.action,
+      details: a.details,
+      createdAt: a.createdAt.toISOString(),
+    }));
+}
+
+export function mockCreateActivity(input: ActivityLogInput): ActivityLogDTO {
+  const a: MActivity = {
+    id: nextId("al"),
+    userName: input.userName,
+    userRole: input.userRole,
+    action: input.action,
+    details: input.details ?? null,
+    createdAt: new Date(),
+  };
+  store.activityLogs.push(a);
+  return {
+    id: a.id,
+    userName: a.userName,
+    userRole: a.userRole,
+    action: a.action,
+    details: a.details,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+// ----------------------------------------------------
 //  عمليات الفواتير
 // ----------------------------------------------------
 export function mockListSales(sp: URLSearchParams): SaleDTO[] {
@@ -1295,6 +1381,7 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
     customerName: input.customerName ?? null,
     customerPhone: input.customerPhone ?? null,
     customerNotes: input.customerNotes ?? null,
+    cashierName: input.cashierName ?? null,
     paymentMethod: input.paymentMethod,
     transferMethod: input.transferMethod ?? null,
     invoiceNotes: input.invoiceNotes ?? null,
@@ -1449,6 +1536,10 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
     { name: string; phone: string | null; total: number; count: number }
   >();
   const paymentMap = new Map<PaymentKey, { total: number; count: number }>();
+  const cashierMap = new Map<
+    string,
+    { count: number; total: number; maxInvoice: number }
+  >();
 
   const customerKey = (name: string | null, phone: string | null) =>
     `${(name ?? "").trim()}|${(phone ?? "").trim()}`;
@@ -1504,6 +1595,20 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
       if (sale.deliveryStatus === "RETURNED") returnedCount += 1;
     } else {
       pickupCount += 1;
+    }
+
+    // أداء الكاشير
+    const cashier = (sale.cashierName ?? "").trim();
+    if (cashier) {
+      const cs = cashierMap.get(cashier) ?? {
+        count: 0,
+        total: 0,
+        maxInvoice: 0,
+      };
+      cs.count += 1;
+      cs.total += sale.finalAmount;
+      if (sale.finalAmount > cs.maxInvoice) cs.maxInvoice = sale.finalAmount;
+      cashierMap.set(cashier, cs);
     }
 
     for (const item of sale.items) {
@@ -1683,6 +1788,16 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
       .map((p) => ({ ...p, revenue: round2(p.revenue) })),
     topBrand,
     newCustomersCount,
+
+    cashierStats: [...cashierMap.entries()]
+      .map(([name, v]) => ({
+        name,
+        count: v.count,
+        total: round2(v.total),
+        avgInvoice: v.count ? round2(v.total / v.count) : 0,
+        maxInvoice: round2(v.maxInvoice),
+      }))
+      .sort((a, b) => b.total - a.total),
 
     deliveryStats: {
       deliveryCount,

@@ -182,6 +182,7 @@ export async function POST(req: Request) {
               customerName: input.customerName,
               customerPhone: input.customerPhone,
               customerNotes: input.customerNotes,
+              cashierName: input.cashierName ?? null,
               paymentMethod: input.paymentMethod as PaymentMethod,
               transferMethod: input.transferMethod ?? null,
               invoiceNotes: input.invoiceNotes ?? null,

@@ -28,12 +28,15 @@ import { Spinner, PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NumberInput, PhoneInput, TextOnlyInput } from "@/components/ui/inputs";
 import { isValidEgyPhone } from "@/lib/input-validators";
+import { getCurrentUser } from "@/lib/auth";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 import { cn } from "@/lib/cn";
 import { calcDiscount, round2 } from "@/lib/sale-utils";
 import {
   formatCurrency,
   formatDateTime,
   formatNumber,
+  formatSaleNumber,
 } from "@/lib/format";
 import {
   BRANCHES,
@@ -416,6 +419,7 @@ function PosRegister({
         customerName: customerName || null,
         customerPhone: customerPhone || null,
         customerNotes: customerNotes || null,
+        cashierName: getCurrentUser()?.name ?? null,
         invoiceNotes: invoiceNotes || null,
         paymentMethod,
         transferMethod: paymentMethod === "TRANSFER" ? transferMethod : null,
@@ -435,6 +439,10 @@ function PosRegister({
             : null,
       });
       setReceipt(sale);
+      void logActivity(
+        ACTIVITY_ACTIONS.CREATE_SALE,
+        `فاتورة ${formatSaleNumber(sale.saleNumber)} — ${formatCurrency(sale.finalAmount)}`
+      );
       resetSale();
       refetch();
     } catch (e) {

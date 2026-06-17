@@ -90,6 +90,7 @@ CREATE TABLE "Sale" (
     "customerName" TEXT,
     "customerPhone" TEXT,
     "customerNotes" TEXT,
+    "cashierName" TEXT,
     "paymentMethod" "PaymentMethod" NOT NULL DEFAULT 'CASH',
     "transferMethod" TEXT,
     "invoiceNotes" TEXT,
@@ -121,6 +122,21 @@ CREATE TABLE "SaleItem" (
 
     CONSTRAINT "SaleItem_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateTable
+CREATE TABLE IF NOT EXISTS "ActivityLog" (
+    "id" TEXT NOT NULL,
+    "userName" TEXT NOT NULL,
+    "userRole" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "details" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ActivityLog_pkey" PRIMARY KEY ("id")
+);
+
+-- AlterTable (idempotent) — عمود الكاشير على الفواتير القديمة
+ALTER TABLE "Sale" ADD COLUMN IF NOT EXISTS "cashierName" TEXT;
 
 -- CreateIndex
 CREATE INDEX "Product_category_idx" ON "Product"("category");
@@ -175,6 +191,12 @@ CREATE INDEX "SaleItem_saleId_idx" ON "SaleItem"("saleId");
 
 -- CreateIndex
 CREATE INDEX "SaleItem_productId_idx" ON "SaleItem"("productId");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "ActivityLog_userName_idx" ON "ActivityLog"("userName");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "ActivityLog_createdAt_idx" ON "ActivityLog"("createdAt");
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_productTypeId_fkey" FOREIGN KEY ("productTypeId") REFERENCES "ProductType"("id") ON DELETE SET NULL ON UPDATE CASCADE;

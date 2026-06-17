@@ -2,19 +2,25 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Logo } from "@/components/logo";
-import { isSessionValid, tryLogin } from "@/lib/auth";
+import { TextOnlyInput } from "@/components/ui/inputs";
+import { getCurrentUser, isSessionValid, login } from "@/lib/auth";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={<div className="min-h-screen bg-bg" />}
-    >
+    <Suspense fallback={<div className="min-h-screen bg-bg" />}>
       <LoginInner />
     </Suspense>
   );
+}
+
+// وجهة ما بعد الدخول حسب الدور: الكاشير → نقطة البيع، المدير → الوجهة المطلوبة
+function destinationFor(role: "ADMIN" | "CASHIER", requested: string): string {
+  if (role === "CASHIER") return "/pos";
+  return requested || "/";
 }
 
 function LoginInner() {
@@ -22,6 +28,7 @@ function LoginInner() {
   const search = useSearchParams();
   const next = search?.get("next") || "/";
 
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,21 +36,33 @@ function LoginInner() {
 
   // إذا كانت الجلسة صالحة، تخطّى صفحة الدخول
   useEffect(() => {
-    if (isSessionValid()) router.replace(next);
+    if (isSessionValid()) {
+      const user = getCurrentUser();
+      router.replace(user ? destinationFor(user.role, next) : next);
+    }
   }, [router, next]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!name.trim()) {
+      setError("من فضلك أدخل اسمك");
+      return;
+    }
     if (!password) return;
     setBusy(true);
     setError(null);
     try {
-      const ok = await tryLogin(password);
-      if (!ok) {
+      const role = login(name, password);
+      if (!role) {
         setError("كلمة المرور غير صحيحة");
         return;
       }
-      router.replace(next);
+      // سجّل الدخول (نمرّر المستخدم صراحةً لأن الحالة قد لا تُقرأ فوراً)
+      await logActivity(ACTIVITY_ACTIONS.LOGIN, null, {
+        name: name.trim(),
+        role,
+      });
+      router.replace(destinationFor(role, next));
     } finally {
       setBusy(false);
     }
@@ -55,12 +74,25 @@ function LoginInner() {
         <div className="flex flex-col items-center">
           <Logo size={120} className="rounded-full" />
           <h1 className="mt-4 text-xl font-extrabold text-text">Euro Brands</h1>
-          <p className="mt-1 text-sm text-muted">
-            نظام إدارة المخزون والمبيعات
-          </p>
+          <p className="mt-1 text-sm text-muted">نظام إدارة المخزون والمبيعات</p>
         </div>
 
         <form onSubmit={submit} className="mt-6 space-y-4">
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <User className="h-4 w-4 text-muted" />
+              الاسم
+            </label>
+            <TextOnlyInput
+              autoFocus
+              className="input"
+              value={name}
+              onChange={setName}
+              placeholder="اكتب اسمك"
+              aria-invalid={!!error}
+            />
+          </div>
+
           <div>
             <label className="label flex items-center gap-1.5">
               <Lock className="h-4 w-4 text-muted" />
@@ -68,7 +100,6 @@ function LoginInner() {
             </label>
             <div className="relative">
               <input
-                autoFocus
                 type={show ? "text" : "password"}
                 className="input pr-3 pl-10 nums"
                 value={password}
@@ -92,7 +123,7 @@ function LoginInner() {
 
           <button
             type="submit"
-            disabled={busy || !password}
+            disabled={busy || !password || !name.trim()}
             className="btn btn-primary h-11 w-full text-base"
           >
             {busy && <Spinner className="h-4 w-4" />}

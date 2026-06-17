@@ -112,6 +112,7 @@ export interface SaleDTO {
   customerName: string | null;
   customerPhone: string | null;
   customerNotes: string | null;
+  cashierName: string | null;
   paymentMethod: PaymentMethodValue;
   transferMethod: TransferMethodValue | null;
   invoiceNotes: string | null;
@@ -201,7 +202,25 @@ export interface SaleInput {
   transferMethod?: TransferMethodValue | null;
   invoiceNotes?: string | null;
   paidAmount?: number | null; // المبلغ المدفوع الآن (للدفع الجزئي)
+  cashierName?: string | null; // اسم الكاشير (من جلسة المستخدم)
   delivery?: DeliveryInput | null; // بيانات التوصيل (اختيارية)
+}
+
+// سجل النشاط
+export interface ActivityLogDTO {
+  id: string;
+  userName: string;
+  userRole: string;
+  action: string;
+  details: string | null;
+  createdAt: string;
+}
+
+export interface ActivityLogInput {
+  userName: string;
+  userRole: string;
+  action: string;
+  details?: string | null;
 }
 
 // إحصائيات لوحة التحكم — موحّدة (الرئيسية + التقارير)
@@ -241,6 +260,15 @@ export interface DashboardStats {
   }[];
   topBrand: { brand: string; qty: number; revenue: number } | null;
   newCustomersCount: number; // عملاء جدد في الفترة (لم يظهروا قبلها)
+
+  // أداء الكاشيرين خلال الفترة
+  cashierStats: {
+    name: string;
+    count: number;
+    total: number;
+    avgInvoice: number;
+    maxInvoice: number;
+  }[];
 
   // القسم 4 — التوصيل
   deliveryStats: {
