@@ -1,10 +1,10 @@
 import { format } from "date-fns";
 import { BRANCH_LABELS, CATEGORY_LABELS } from "@/lib/constants";
-import type { ReportsData } from "@/lib/types";
+import type { DashboardStats } from "@/lib/types";
 
 // تصدير التقرير إلى Excel بأوراق منفصلة: ملخص، المنتجات، العملاء، المخزون
 export async function generateReportExcel(
-  data: ReportsData,
+  data: DashboardStats,
   range: { from: string; to: string }
 ) {
   const XLSX = await import("xlsx");
@@ -24,22 +24,38 @@ export async function generateReportExcel(
     ["تاريخ التقرير", format(new Date(), "yyyy/MM/dd HH:mm")],
     [],
     ["البيان", "القيمة"],
-    ["إجمالي المبيعات (الصافي)", data.totalSales],
+    ["إجمالي المبيعات (الصافي)", data.rangeSales],
     ["قبل الخصم", data.grossSales],
     ["إجمالي الخصومات", data.discountTotal],
     ["فواتير عليها خصم", data.discountedCount],
     ["نسبة الخصم %", discountPct],
-    ["عدد الفواتير", data.invoicesCount],
+    ["عدد الفواتير", data.rangeSalesCount],
     ["القطع المباعة", data.itemsSold],
     ["متوسط الفاتورة", data.avgInvoice],
+    ["إجمالي الرصيد المتبقي", data.remainingTotal],
+    ["عملاء جدد", data.newCustomersCount],
     [],
     ["مقارنة الفروع"],
     ["الفرع", "عدد الفواتير", "الإجمالي"],
-    ...data.byBranch.map((b) => [BRANCH_LABELS[b.branch], b.count, b.total]),
+    ...data.branchComparison.map((b) => [
+      BRANCH_LABELS[b.branch],
+      b.count,
+      b.total,
+    ]),
     [],
     ["المبيعات حسب الفئة"],
     ["الفئة", "الكمية", "الإيراد"],
     ...data.byCategory.map((c) => [CATEGORY_LABELS[c.category], c.qty, c.total]),
+    [],
+    ["توزيع طرق الدفع"],
+    ["الطريقة", "عدد الفواتير", "الإجمالي"],
+    ...data.paymentBreakdown.map((p) => [p.label, p.count, p.total]),
+    [],
+    ["إحصائيات التوصيل"],
+    ["طلبات التوصيل", data.deliveryStats.deliveryCount],
+    ["استلام من المحل", data.deliveryStats.pickupCount],
+    ["مرتجعات", data.deliveryStats.returnedCount],
+    ["نسبة المرتجعات %", data.deliveryStats.returnedPct],
   ];
   const wsSummary = XLSX.utils.aoa_to_sheet(summary);
   wsSummary["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 14 }];
@@ -50,6 +66,12 @@ export async function generateReportExcel(
     ["أفضل المنتجات مبيعاً"],
     ["المنتج", "البراند", "الكمية المباعة", "الإيراد"],
     ...data.topProducts.map((p) => [p.name, p.brand, p.qty, p.revenue]),
+    [],
+    ["أكثر براند مبيعاً"],
+    ["البراند", "الكمية", "الإيراد"],
+    ...(data.topBrand
+      ? [[data.topBrand.brand, data.topBrand.qty, data.topBrand.revenue]]
+      : []),
     [],
     ["منتجات راكدة (في المخزون بلا مبيعات في الفترة)"],
     ["المنتج", "البراند", "المخزون"],
@@ -63,12 +85,7 @@ export async function generateReportExcel(
   const customers: (string | number)[][] = [
     ["أفضل العملاء حسب قيمة الشراء"],
     ["العميل", "الهاتف", "عدد الفواتير", "إجمالي الشراء"],
-    ...data.topCustomers.map((c) => [
-      c.name,
-      c.phone ?? "",
-      c.count,
-      c.total,
-    ]),
+    ...data.topCustomers.map((c) => [c.name, c.phone ?? "", c.count, c.total]),
   ];
   const wsCustomers = XLSX.utils.aoa_to_sheet(customers);
   wsCustomers["!cols"] = [{ wch: 24 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];

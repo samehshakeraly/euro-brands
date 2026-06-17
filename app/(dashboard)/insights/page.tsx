@@ -179,7 +179,7 @@ export default function InsightsPage() {
                       </span>
                     </div>
                     <QuickAction
-                      href="/reports"
+                      href="/dashboard"
                       icon={<FileText className="h-4 w-4" />}
                       label="طباعة تقرير"
                     />

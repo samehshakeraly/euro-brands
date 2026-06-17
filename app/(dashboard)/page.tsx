@@ -11,7 +11,7 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Package,
-  BarChart3,
+  ReceiptText,
   Sparkles,
 } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
@@ -83,7 +83,7 @@ export default function HomePage() {
             <QuickLink href="/pos" icon={<ShoppingCart className="h-6 w-6" />} label="نقطة البيع" />
             <QuickLink href="/inventory" icon={<Package className="h-6 w-6" />} label="المخزون" />
             <QuickLink href="/dashboard" icon={<LayoutDashboard className="h-6 w-6" />} label="لوحة التحكم" />
-            <QuickLink href="/reports" icon={<BarChart3 className="h-6 w-6" />} label="التقارير" />
+            <QuickLink href="/sales" icon={<ReceiptText className="h-6 w-6" />} label="سجل الفواتير" />
             <QuickLink href="/insights" icon={<Sparkles className="h-6 w-6" />} label="الذكاء" />
           </div>
         </div>
