@@ -26,6 +26,23 @@ export const DISCOUNT_TYPE_LABELS: Record<DiscountTypeValue, string> = {
   FIXED: "مبلغ ثابت (ج.م)",
 };
 
+export const PAYMENT_METHODS = ["CASH", "VISA", "TRANSFER"] as const;
+export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethodValue, string> = {
+  CASH: "كاش",
+  VISA: "فيزا",
+  TRANSFER: "تحويل",
+};
+
+export const TRANSFER_METHODS = ["VODAFONE_CASH", "INSTAPAY"] as const;
+export type TransferMethodValue = (typeof TRANSFER_METHODS)[number];
+
+export const TRANSFER_METHOD_LABELS: Record<TransferMethodValue, string> = {
+  VODAFONE_CASH: "فودافون كاش",
+  INSTAPAY: "انستا باي",
+};
+
 // المقاسات المتاحة حسب الفئة
 export const CLOTHING_SIZES = [
   "XS",

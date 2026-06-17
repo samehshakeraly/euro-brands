@@ -2,6 +2,8 @@ import type {
   BranchValue,
   CategoryValue,
   DiscountTypeValue,
+  PaymentMethodValue,
+  TransferMethodValue,
 } from "./constants";
 
 // الأنواع المشتركة بين الواجهة والـ API (نسخة قابلة للتسلسل JSON)
@@ -82,6 +84,11 @@ export interface SaleDTO {
   customerName: string | null;
   customerPhone: string | null;
   customerNotes: string | null;
+  paymentMethod: PaymentMethodValue;
+  transferMethod: TransferMethodValue | null;
+  invoiceNotes: string | null;
+  paidAmount: number;
+  remainingAmount: number;
   createdAt: string;
   items: SaleItemDTO[];
   itemsCount?: number;
@@ -140,6 +147,10 @@ export interface SaleInput {
   customerName?: string | null;
   customerPhone?: string | null;
   customerNotes?: string | null;
+  paymentMethod: PaymentMethodValue;
+  transferMethod?: TransferMethodValue | null;
+  invoiceNotes?: string | null;
+  paidAmount?: number | null; // المبلغ المدفوع الآن (للدفع الجزئي)
 }
 
 // إحصائيات لوحة التحكم

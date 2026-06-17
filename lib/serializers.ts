@@ -66,6 +66,11 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
     customerName: s.customerName,
     customerPhone: s.customerPhone,
     customerNotes: s.customerNotes,
+    paymentMethod: s.paymentMethod as SaleDTO["paymentMethod"],
+    transferMethod: (s.transferMethod as SaleDTO["transferMethod"]) ?? null,
+    invoiceNotes: s.invoiceNotes,
+    paidAmount: s.paidAmount,
+    remainingAmount: s.remainingAmount,
     createdAt: s.createdAt.toISOString(),
     items: s.items.map((it) => ({
       id: it.id,

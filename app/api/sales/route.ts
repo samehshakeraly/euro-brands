@@ -1,4 +1,9 @@
-import { Prisma, type Branch, type DiscountType } from "@prisma/client";
+import {
+  Prisma,
+  type Branch,
+  type DiscountType,
+  type PaymentMethod,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, handleServerError } from "@/lib/api";
 import { toSaleDTO } from "@/lib/serializers";
@@ -119,6 +124,13 @@ export async function POST(req: Request) {
             input.discountValue
           );
 
+          // الدفع الجزئي: المبلغ المدفوع والمتبقي
+          const paidAmount =
+            input.paidAmount == null
+              ? finalAmount
+              : Math.min(Math.max(input.paidAmount, 0), finalAmount);
+          const remainingAmount = round2(finalAmount - paidAmount);
+
           // خصم الكميات من مخزون الفرع
           for (const [variantId, qty] of merged.entries()) {
             await tx.productVariant.update({
@@ -145,6 +157,11 @@ export async function POST(req: Request) {
               customerName: input.customerName,
               customerPhone: input.customerPhone,
               customerNotes: input.customerNotes,
+              paymentMethod: input.paymentMethod as PaymentMethod,
+              transferMethod: input.transferMethod ?? null,
+              invoiceNotes: input.invoiceNotes ?? null,
+              paidAmount: round2(paidAmount),
+              remainingAmount,
               items: { create: itemsData },
             },
             include: saleInclude,

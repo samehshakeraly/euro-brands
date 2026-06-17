@@ -142,3 +142,19 @@
     border-color: #ddd !important;
   }
 }
+
+/* طباعة إيصال البيع فقط (عند فتح نافذة الإيصال) */
+@media print {
+  body.receipt-open * {
+    visibility: hidden;
+  }
+  body.receipt-open .print-receipt,
+  body.receipt-open .print-receipt * {
+    visibility: visible;
+  }
+  body.receipt-open .print-receipt {
+    position: absolute;
+    inset: 0 0 auto 0;
+    padding: 16px;
+  }
+}

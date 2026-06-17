@@ -137,6 +137,9 @@ export async function runSeed(
         finalAmount: total1 * 0.9,
         customerName: "أحمد محمد",
         customerPhone: "01001234567",
+        paymentMethod: "CASH",
+        paidAmount: total1 * 0.9,
+        remainingAmount: 0,
         items: {
           create: [
             {
@@ -163,6 +166,10 @@ export async function runSeed(
         totalAmount: total2,
         discountValue: 0,
         finalAmount: total2,
+        paymentMethod: "TRANSFER",
+        transferMethod: "INSTAPAY",
+        paidAmount: total2,
+        remainingAmount: 0,
         items: {
           create: [
             {

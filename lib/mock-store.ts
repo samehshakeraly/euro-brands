@@ -13,6 +13,8 @@ import {
   type BranchValue,
   type CategoryValue,
   type DiscountTypeValue,
+  type PaymentMethodValue,
+  type TransferMethodValue,
 } from "./constants";
 import { ValidationError } from "./validate";
 import type { NormProduct, NormSale } from "./insights-analytics";
@@ -81,6 +83,11 @@ interface MSale {
   customerName: string | null;
   customerPhone: string | null;
   customerNotes: string | null;
+  paymentMethod: PaymentMethodValue;
+  transferMethod: TransferMethodValue | null;
+  invoiceNotes: string | null;
+  paidAmount: number;
+  remainingAmount: number;
   createdAt: Date;
   items: MItem[];
 }
@@ -376,6 +383,18 @@ function buildStore(): Store {
       9 + Math.floor(rng() * 11)
     );
 
+    const pr = rng();
+    const paymentMethod: PaymentMethodValue =
+      pr < 0.15 ? "TRANSFER" : pr < 0.4 ? "VISA" : "CASH";
+    const transferMethod: TransferMethodValue | null =
+      paymentMethod === "TRANSFER"
+        ? rng() < 0.5
+          ? "VODAFONE_CASH"
+          : "INSTAPAY"
+        : null;
+    const partial = rng() < 0.15;
+    const paidAmount = partial ? round2(finalAmount * 0.6) : finalAmount;
+
     store.sales.push({
       id: saleId,
       saleNumber: store.sales.length + 1,
@@ -387,6 +406,11 @@ function buildStore(): Store {
       customerName: cName || null,
       customerPhone: cPhone || null,
       customerNotes: null,
+      paymentMethod,
+      transferMethod,
+      invoiceNotes: null,
+      paidAmount,
+      remainingAmount: round2(finalAmount - paidAmount),
       createdAt: created,
       items,
     });
@@ -475,6 +499,11 @@ function shapeSale(s: MSale): SaleDTO {
     customerName: s.customerName,
     customerPhone: s.customerPhone,
     customerNotes: s.customerNotes,
+    paymentMethod: s.paymentMethod,
+    transferMethod: s.transferMethod,
+    invoiceNotes: s.invoiceNotes,
+    paidAmount: s.paidAmount,
+    remainingAmount: s.remainingAmount,
     createdAt: s.createdAt.toISOString(),
     items: s.items.map((it) => {
       const ref = findVariant(it.variantId);
@@ -887,6 +916,11 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
   const saleNumber =
     store.sales.reduce((max, s) => Math.max(max, s.saleNumber), 0) + 1;
 
+  const paidAmount =
+    input.paidAmount == null
+      ? finalAmount
+      : Math.min(Math.max(input.paidAmount, 0), finalAmount);
+
   const sale: MSale = {
     id: saleId,
     saleNumber,
@@ -898,6 +932,11 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
     customerName: input.customerName ?? null,
     customerPhone: input.customerPhone ?? null,
     customerNotes: input.customerNotes ?? null,
+    paymentMethod: input.paymentMethod,
+    transferMethod: input.transferMethod ?? null,
+    invoiceNotes: input.invoiceNotes ?? null,
+    paidAmount: round2(paidAmount),
+    remainingAmount: round2(finalAmount - paidAmount),
     createdAt: new Date(),
     items,
   };

@@ -33,6 +33,12 @@ enum DiscountType {
   FIXED // مبلغ ثابت
 }
 
+enum PaymentMethod {
+  CASH // كاش
+  VISA // فيزا
+  TRANSFER // تحويل
+}
+
 // ----------------------------------------------------
 //  Models
 // ----------------------------------------------------
@@ -99,6 +105,12 @@ model Sale {
   customerName  String?
   customerPhone String?
   customerNotes String?
+
+  paymentMethod   PaymentMethod @default(CASH)
+  transferMethod  String? // فودافون كاش / انستا باي (عند التحويل)
+  invoiceNotes    String? // ملاحظات على الفاتورة (مستقلة عن ملاحظات العميل)
+  paidAmount      Float         @default(0) // المبلغ المدفوع
+  remainingAmount Float         @default(0) // المبلغ المتبقي
 
   items SaleItem[]
 

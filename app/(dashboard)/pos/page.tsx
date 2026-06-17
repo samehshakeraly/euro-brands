@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Plus,
@@ -12,22 +12,37 @@ import {
   Package,
   RefreshCcw,
   ScanLine,
+  Save,
+  Clock,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiPost } from "@/lib/client";
 import { BarcodeScanner } from "@/components/barcode-scanner";
+import { ReceiptModal } from "@/components/receipt-modal";
+import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { Spinner, PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/cn";
-import { calcDiscount } from "@/lib/sale-utils";
-import { formatCurrency, formatNumber, formatSaleNumber } from "@/lib/format";
+import { calcDiscount, round2 } from "@/lib/sale-utils";
+import {
+  formatCurrency,
+  formatDateTime,
+  formatNumber,
+} from "@/lib/format";
 import {
   BRANCHES,
   BRANCH_LABELS,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  TRANSFER_METHODS,
+  TRANSFER_METHOD_LABELS,
   type BranchValue,
   type DiscountTypeValue,
+  type PaymentMethodValue,
+  type TransferMethodValue,
 } from "@/lib/constants";
 import type { ProductDTO, SaleDTO } from "@/lib/types";
 
@@ -40,6 +55,24 @@ interface CartItem {
   unitPrice: number;
   available: number;
   quantity: number;
+}
+
+interface HeldInvoice {
+  id: string;
+  savedAt: string;
+  itemsCount: number;
+  total: number;
+  cart: CartItem[];
+  customerName: string;
+  customerPhone: string;
+  customerNotes: string;
+  invoiceNotes: string;
+  discountType: DiscountTypeValue | "NONE";
+  discountValue: string;
+  paymentMethod: PaymentMethodValue;
+  transferMethod: TransferMethodValue | "";
+  partialOn: boolean;
+  paidInput: string;
 }
 
 const BRANCH_KEY = "eb-pos-branch";
@@ -60,12 +93,15 @@ export default function PosPage() {
   }
 
   if (!ready) return <PageLoader />;
-
-  if (!branch) {
-    return <BranchPicker onPick={chooseBranch} />;
-  }
-
-  return <PosRegister branch={branch} onChangeBranch={() => setBranch(null)} />;
+  if (!branch) return <BranchPicker onPick={chooseBranch} />;
+  // مفتاح لإعادة تهيئة الحالة عند تغيير الفرع
+  return (
+    <PosRegister
+      key={branch}
+      branch={branch}
+      onChangeBranch={() => setBranch(null)}
+    />
+  );
 }
 
 function BranchPicker({ onPick }: { onPick: (b: BranchValue) => void }) {
@@ -102,6 +138,8 @@ function PosRegister({
   branch: BranchValue;
   onChangeBranch: () => void;
 }) {
+  const heldKey = `eb-held-${branch}`;
+
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -112,23 +150,53 @@ function PosRegister({
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
+  const [invoiceNotes, setInvoiceNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>("CASH");
+  const [transferMethod, setTransferMethod] = useState<TransferMethodValue | "">(
+    ""
+  );
+  const [partialOn, setPartialOn] = useState(false);
+  const [paidInput, setPaidInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [lastSale, setLastSale] = useState<SaleDTO | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [receipt, setReceipt] = useState<SaleDTO | null>(null);
+  const [held, setHeld] = useState<HeldInvoice[]>([]);
+  const [heldOpen, setHeldOpen] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(term.trim()), 300);
+    const t = setTimeout(() => setDebounced(term.trim()), 250);
     return () => clearTimeout(t);
   }, [term]);
+
+  useEffect(() => setHighlight(0), [debounced]);
+
+  // تحميل/حفظ الفواتير المعلّقة في localStorage (لكل فرع)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(heldKey);
+      setHeld(raw ? JSON.parse(raw) : []);
+    } catch {
+      setHeld([]);
+    }
+  }, [heldKey]);
+  useEffect(() => {
+    localStorage.setItem(heldKey, JSON.stringify(held));
+  }, [held, heldKey]);
 
   const url = `/api/products?branch=${branch}${
     debounced ? `&search=${encodeURIComponent(debounced)}` : ""
   }`;
   const { data, loading, error, refetch } = useFetch<ProductDTO[]>(url);
   const results = data ?? [];
+  const dropdownItems = results.slice(0, 8);
+  const dropdownOpen =
+    searchFocused && debounced.length >= 2 && dropdownItems.length > 0 && !loading;
 
   // ---- عمليات السلة ----
-  function addToCart(product: ProductDTO, variant: ProductDTO["variants"][0]) {
+  function addVariant(product: ProductDTO, variant: ProductDTO["variants"][0]) {
     if (variant.quantity <= 0) return;
     setCart((prev) => {
       const existing = prev.find((i) => i.variantId === variant.id);
@@ -138,9 +206,7 @@ function PosRegister({
           return prev;
         }
         return prev.map((i) =>
-          i.variantId === variant.id
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+          i.variantId === variant.id ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
       return [
@@ -159,6 +225,16 @@ function PosRegister({
     });
   }
 
+  // يضيف أول مقاس متاح للمنتج (لاختصار لوحة المفاتيح)
+  function addFirstAvailable(product: ProductDTO) {
+    const v = product.variants.find((x) => {
+      const inCart = cart.find((c) => c.variantId === x.id)?.quantity ?? 0;
+      return x.quantity > 0 && inCart < x.quantity;
+    });
+    if (v) addVariant(product, v);
+    else toast.error("لا توجد كمية متاحة لهذا المنتج");
+  }
+
   function setQty(variantId: string, qty: number) {
     setCart((prev) =>
       prev.map((i) =>
@@ -168,7 +244,6 @@ function PosRegister({
       )
     );
   }
-
   function removeItem(variantId: string) {
     setCart((prev) => prev.filter((i) => i.variantId !== variantId));
   }
@@ -180,6 +255,11 @@ function PosRegister({
     setCustomerName("");
     setCustomerPhone("");
     setCustomerNotes("");
+    setInvoiceNotes("");
+    setPaymentMethod("CASH");
+    setTransferMethod("");
+    setPartialOn(false);
+    setPaidInput("");
   }
 
   // ---- الإجماليات ----
@@ -197,24 +277,99 @@ function PosRegister({
     [totalAmount, discountType, discountValue]
   );
   const itemsCount = cart.reduce((s, i) => s + i.quantity, 0);
+  const paidAmount = partialOn
+    ? Math.min(Math.max(Number(paidInput) || 0, 0), finalAmount)
+    : finalAmount;
+  const remainingAmount = round2(finalAmount - paidAmount);
+
+  function onSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!dropdownOpen) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight((h) => Math.min(h + 1, dropdownItems.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const p = dropdownItems[highlight];
+      if (p) addFirstAvailable(p);
+    } else if (e.key === "Escape") {
+      setSearchFocused(false);
+    }
+  }
+
+  // ---- الفواتير المعلّقة ----
+  function saveHeld() {
+    if (cart.length === 0) return toast.error("لا توجد فاتورة لحفظها");
+    const inv: HeldInvoice = {
+      id: Math.random().toString(36).slice(2),
+      savedAt: new Date().toISOString(),
+      itemsCount,
+      total: round2(finalAmount),
+      cart,
+      customerName,
+      customerPhone,
+      customerNotes,
+      invoiceNotes,
+      discountType,
+      discountValue,
+      paymentMethod,
+      transferMethod,
+      partialOn,
+      paidInput,
+    };
+    setHeld((prev) => [inv, ...prev]);
+    resetSale();
+    toast.success("تم حفظ الفاتورة مؤقتاً");
+  }
+
+  function restoreHeld(h: HeldInvoice) {
+    setCart(h.cart);
+    setCustomerName(h.customerName);
+    setCustomerPhone(h.customerPhone);
+    setCustomerNotes(h.customerNotes);
+    setInvoiceNotes(h.invoiceNotes);
+    setDiscountType(h.discountType);
+    setDiscountValue(h.discountValue);
+    setPaymentMethod(h.paymentMethod);
+    setTransferMethod(h.transferMethod);
+    setPartialOn(h.partialOn);
+    setPaidInput(h.paidInput);
+    setHeld((prev) => prev.filter((x) => x.id !== h.id));
+    setHeldOpen(false);
+    toast.success("تم استرجاع الفاتورة");
+  }
+
+  function deleteHeld(id: string) {
+    setHeld((prev) => prev.filter((x) => x.id !== id));
+  }
 
   async function confirmSale() {
     if (cart.length === 0) return toast.error("الفاتورة فارغة");
+    if (paymentMethod === "TRANSFER" && !transferMethod)
+      return toast.error("اختر طريقة التحويل");
     setSubmitting(true);
     try {
       const sale = await apiPost<SaleDTO>("/api/sales", {
         branch,
-        items: cart.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+        items: cart.map((i) => ({
+          variantId: i.variantId,
+          quantity: i.quantity,
+        })),
         discountType: discountType === "NONE" ? null : discountType,
         discountValue: Number(discountValue) || 0,
         customerName: customerName || null,
         customerPhone: customerPhone || null,
         customerNotes: customerNotes || null,
+        invoiceNotes: invoiceNotes || null,
+        paymentMethod,
+        transferMethod: paymentMethod === "TRANSFER" ? transferMethod : null,
+        paidAmount: partialOn ? paidAmount : null,
       });
-      setLastSale(sale);
-      toast.success(`تم تسجيل الفاتورة ${formatSaleNumber(sale.saleNumber)}`);
+      setReceipt(sale);
       resetSale();
-      refetch(); // تحديث الكميات المتاحة
+      refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "تعذّر تأكيد البيعة");
       refetch();
@@ -225,45 +380,38 @@ function PosRegister({
 
   return (
     <div className="pb-24 md:pb-0">
-      {/* رأس الصفحة: الفرع الحالي */}
+      {/* رأس الصفحة */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-text">نقطة البيع</h1>
           <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
             <Store className="h-4 w-4" />
             الفرع الحالي:{" "}
-            <span className="font-bold text-accent">
-              {BRANCH_LABELS[branch]}
-            </span>
+            <span className="font-bold text-accent">{BRANCH_LABELS[branch]}</span>
           </p>
         </div>
-        <button onClick={onChangeBranch} className="btn btn-secondary h-9 text-xs">
-          <RefreshCcw className="h-4 w-4" />
-          تغيير الفرع
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setHeldOpen(true)}
+            className="btn btn-secondary h-9 text-xs"
+          >
+            <Clock className="h-4 w-4" />
+            معلّقة
+            {held.length > 0 && (
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold text-white nums">
+                {held.length}
+              </span>
+            )}
+          </button>
+          <button onClick={onChangeBranch} className="btn btn-secondary h-9 text-xs">
+            <RefreshCcw className="h-4 w-4" />
+            تغيير الفرع
+          </button>
+        </div>
       </div>
 
-      {lastSale && (
-        <Card className="mb-4 flex flex-col items-start gap-2 border-r-4 border-r-success p-4 sm:flex-row sm:items-center sm:gap-3">
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-          <p className="text-sm text-text">
-            تم تسجيل الفاتورة{" "}
-            <span className="font-bold">
-              {formatSaleNumber(lastSale.saleNumber)}
-            </span>{" "}
-            بنجاح بإجمالي {formatCurrency(lastSale.finalAmount)}.
-          </p>
-          <a
-            href={`/sales/${lastSale.id}`}
-            className="btn btn-ghost h-9 text-sm text-accent sm:mr-auto"
-          >
-            عرض الفاتورة
-          </a>
-        </Card>
-      )}
-
       <div className="flex flex-col gap-4 md:flex-row">
-        {/* البحث والنتائج (يسار) */}
+        {/* البحث والنتائج */}
         <div className="order-1 flex-1 md:order-2">
           <Card className="p-4">
             <div className="mb-4 flex gap-2">
@@ -275,7 +423,76 @@ function PosRegister({
                   placeholder="ابحث بالاسم أو البراند أو الكود/الباركود..."
                   value={term}
                   onChange={(e) => setTerm(e.target.value)}
+                  onFocus={() => {
+                    if (blurTimer.current) clearTimeout(blurTimer.current);
+                    setSearchFocused(true);
+                  }}
+                  onBlur={() => {
+                    blurTimer.current = setTimeout(
+                      () => setSearchFocused(false),
+                      150
+                    );
+                  }}
+                  onKeyDown={onSearchKey}
                 />
+
+                {/* قائمة منسدلة سريعة (بعد حرفين) مع تنقّل بالأسهم */}
+                {dropdownOpen && (
+                  <div className="absolute z-20 mt-1 max-h-[60vh] w-full overflow-y-auto rounded-lg border bg-surface shadow-card">
+                    {dropdownItems.map((p, idx) => (
+                      <div
+                        key={p.id}
+                        onMouseEnter={() => setHighlight(idx)}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 border-b border-[var(--border)] p-2 last:border-0",
+                          idx === highlight && "bg-accent-soft"
+                        )}
+                        onClick={() => addFirstAvailable(p)}
+                      >
+                        <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-[var(--surface-2)]">
+                          {p.images[0] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={p.images[0]}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-muted">
+                              <Package className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-text">
+                            {p.name}
+                          </p>
+                          <p className="text-xs text-muted">{p.brand}</p>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {p.variants.slice(0, 4).map((v) => (
+                            <button
+                              key={v.id}
+                              disabled={v.quantity <= 0}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                addVariant(p, v);
+                              }}
+                              className={cn(
+                                "rounded border px-1.5 py-0.5 text-[11px] nums",
+                                v.quantity <= 0
+                                  ? "text-muted line-through opacity-50"
+                                  : "hover:border-accent hover:text-accent"
+                              )}
+                            >
+                              {v.size}({v.quantity})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -318,7 +535,7 @@ function PosRegister({
                     key={product.id}
                     product={product}
                     cart={cart}
-                    onAdd={addToCart}
+                    onAdd={addVariant}
                   />
                 ))}
               </div>
@@ -326,7 +543,7 @@ function PosRegister({
           </Card>
         </div>
 
-        {/* الفاتورة الحالية (يمين) */}
+        {/* الفاتورة الحالية */}
         <div className="order-2 w-full md:order-1 md:w-[400px] md:shrink-0">
           <Card className="p-4 md:sticky md:top-20" tone="accent">
             <div className="mb-3 flex items-center justify-between">
@@ -341,7 +558,6 @@ function PosRegister({
               )}
             </div>
 
-            {/* عناصر السلة */}
             {cart.length === 0 ? (
               <div className="py-10 text-center text-sm text-muted">
                 لم تتم إضافة منتجات بعد.
@@ -349,12 +565,9 @@ function PosRegister({
                 ابحث وأضف المنتجات من القائمة.
               </div>
             ) : (
-              <div className="max-h-[40vh] space-y-2 overflow-y-auto pl-1">
+              <div className="max-h-[36vh] space-y-2 overflow-y-auto pl-1">
                 {cart.map((item) => (
-                  <div
-                    key={item.variantId}
-                    className="rounded-lg border bg-bg p-2.5"
-                  >
+                  <div key={item.variantId} className="rounded-lg border bg-bg p-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-text">
@@ -428,13 +641,68 @@ function PosRegister({
                   onChange={(e) => setCustomerPhone(e.target.value)}
                 />
                 <textarea
-                  className="input min-h-[60px] resize-y"
-                  placeholder="ملاحظات"
+                  className="input min-h-[56px] resize-y"
+                  placeholder="ملاحظات العميل"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                 />
               </div>
             </details>
+
+            {/* ملاحظات الفاتورة (مستقلة) */}
+            <div className="mt-3">
+              <label className="label">ملاحظات الفاتورة</label>
+              <textarea
+                className="input min-h-[52px] resize-y"
+                placeholder="ملاحظة تُطبع على الفاتورة..."
+                value={invoiceNotes}
+                onChange={(e) => setInvoiceNotes(e.target.value)}
+              />
+            </div>
+
+            {/* طريقة الدفع */}
+            <div className="mt-4">
+              <label className="label">طريقة الدفع *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod(m);
+                      if (m !== "TRANSFER") setTransferMethod("");
+                    }}
+                    className={cn(
+                      "rounded-lg border py-2 text-sm font-medium transition-colors",
+                      paymentMethod === m
+                        ? "border-accent bg-accent-soft text-accent"
+                        : "text-muted hover:text-text"
+                    )}
+                  >
+                    {PAYMENT_METHOD_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+              {paymentMethod === "TRANSFER" && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {TRANSFER_METHODS.map((tm) => (
+                    <button
+                      key={tm}
+                      type="button"
+                      onClick={() => setTransferMethod(tm)}
+                      className={cn(
+                        "rounded-lg border py-2 text-sm font-medium transition-colors",
+                        transferMethod === tm
+                          ? "border-accent bg-accent-soft text-accent"
+                          : "text-muted hover:text-text"
+                      )}
+                    >
+                      {TRANSFER_METHOD_LABELS[tm]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* الخصم */}
             <div className="mt-4">
@@ -464,6 +732,40 @@ function PosRegister({
               </div>
             </div>
 
+            {/* الدفع الجزئي */}
+            <div className="mt-4">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-text">
+                <input
+                  type="checkbox"
+                  checked={partialOn}
+                  onChange={(e) => setPartialOn(e.target.checked)}
+                  className="h-4 w-4 accent-[#6c63ff]"
+                />
+                دفع جزئي
+              </label>
+              {partialOn && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="mb-1 block text-xs text-muted">المبلغ المدفوع</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={finalAmount}
+                      className="input nums"
+                      value={paidInput}
+                      onChange={(e) => setPaidInput(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs text-muted">المبلغ المتبقي</span>
+                    <div className="input flex items-center bg-[var(--surface-2)] nums">
+                      {formatCurrency(remainingAmount)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* الإجماليات */}
             <div className="mt-4 space-y-1.5 border-t pt-4 text-sm">
               <div className="flex justify-between text-muted">
@@ -480,30 +782,56 @@ function PosRegister({
                 <span>الصافي</span>
                 <span className="nums">{formatCurrency(finalAmount)}</span>
               </div>
+              {partialOn && remainingAmount > 0 && (
+                <div className="flex justify-between font-bold text-warning">
+                  <span>متبقٍ على العميل</span>
+                  <span className="nums">{formatCurrency(remainingAmount)}</span>
+                </div>
+              )}
             </div>
 
-            <button
-              onClick={confirmSale}
-              disabled={submitting || cart.length === 0}
-              className="btn btn-primary mt-4 hidden h-11 w-full text-base md:inline-flex"
-            >
-              {submitting ? (
-                <Spinner className="h-5 w-5" />
-              ) : (
-                <CheckCircle2 className="h-5 w-5" />
-              )}
-              تأكيد البيعة
-            </button>
+            {/* أزرار (سطح المكتب) */}
+            <div className="mt-4 hidden gap-2 md:flex">
+              <button
+                onClick={confirmSale}
+                disabled={submitting || cart.length === 0}
+                className="btn btn-primary h-11 flex-1 text-base"
+              >
+                {submitting ? (
+                  <Spinner className="h-5 w-5" />
+                ) : (
+                  <CheckCircle2 className="h-5 w-5" />
+                )}
+                تأكيد البيعة
+              </button>
+              <button
+                onClick={saveHeld}
+                disabled={cart.length === 0}
+                className="btn btn-secondary h-11"
+                title="حفظ الفاتورة مؤقتاً"
+              >
+                <Save className="h-4 w-4" />
+                حفظ مؤقت
+              </button>
+            </div>
           </Card>
         </div>
       </div>
 
-      {/* شريط تأكيد ثابت أسفل الشاشة (للموبايل — يُستخدم بإبهام واحد) */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-surface p-3 shadow-[0_-2px_12px_rgba(0,0,0,0.12)] md:hidden">
+      {/* شريط ثابت للموبايل */}
+      <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t bg-surface p-3 shadow-[0_-2px_12px_rgba(0,0,0,0.12)] md:hidden">
+        <button
+          onClick={saveHeld}
+          disabled={cart.length === 0}
+          className="btn btn-secondary h-14 px-3"
+          aria-label="حفظ مؤقت"
+        >
+          <Save className="h-5 w-5" />
+        </button>
         <button
           onClick={confirmSale}
           disabled={submitting || cart.length === 0}
-          className="btn btn-primary h-14 w-full justify-between text-base"
+          className="btn btn-primary h-14 flex-1 justify-between text-base"
         >
           <span className="flex items-center gap-2">
             {submitting ? (
@@ -532,6 +860,55 @@ function PosRegister({
           setScannerOpen(false);
         }}
       />
+
+      <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />
+
+      {/* الفواتير المعلّقة */}
+      <Modal
+        open={heldOpen}
+        onClose={() => setHeldOpen(false)}
+        title={`الفواتير المعلّقة — ${BRANCH_LABELS[branch]}`}
+      >
+        {held.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted">
+            لا توجد فواتير معلّقة.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {held.map((h) => (
+              <div
+                key={h.id}
+                className="flex items-center justify-between gap-2 rounded-lg border p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-text nums">
+                    {formatNumber(h.itemsCount)} قطعة · {formatCurrency(h.total)}
+                  </p>
+                  <p className="text-xs text-muted nums">
+                    {formatDateTime(h.savedAt)}
+                    {h.customerName ? ` · ${h.customerName}` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    onClick={() => restoreHeld(h)}
+                    className="btn btn-primary h-9 text-xs"
+                  >
+                    استرجاع
+                  </button>
+                  <button
+                    onClick={() => deleteHeld(h.id)}
+                    className="btn btn-ghost h-9 w-9 !px-0 text-danger"
+                    aria-label="حذف"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -564,7 +941,10 @@ function SearchResult({
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-text">{product.name}</p>
-          <p className="text-xs text-muted">{product.brand}</p>
+          <p className="text-xs text-muted">
+            {product.brand}
+            {product.sku ? ` · ${product.sku}` : ""}
+          </p>
         </div>
       </div>
 

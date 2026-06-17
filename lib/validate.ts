@@ -2,8 +2,12 @@ import {
   BRANCHES,
   CATEGORIES,
   DISCOUNT_TYPES,
+  PAYMENT_METHODS,
+  TRANSFER_METHODS,
   type BranchValue,
   type CategoryValue,
+  type PaymentMethodValue,
+  type TransferMethodValue,
 } from "./constants";
 import type {
   BrandInput,
@@ -165,6 +169,29 @@ export function parseSaleInput(body: any): SaleInput {
   if (discountValue < 0) throw new ValidationError("قيمة الخصم غير صحيحة");
   if (discountValue === 0) discountType = null;
 
+  // طريقة الدفع (مطلوبة)
+  const paymentMethod = asString(body?.paymentMethod);
+  if (!PAYMENT_METHODS.includes(paymentMethod as PaymentMethodValue))
+    throw new ValidationError("يجب اختيار طريقة الدفع");
+
+  // طريقة التحويل (مطلوبة عند اختيار «تحويل»)
+  let transferMethod: TransferMethodValue | null = null;
+  if (paymentMethod === "TRANSFER") {
+    const tm = asString(body?.transferMethod);
+    if (!TRANSFER_METHODS.includes(tm as TransferMethodValue))
+      throw new ValidationError("يجب اختيار طريقة التحويل");
+    transferMethod = tm as TransferMethodValue;
+  }
+
+  // المبلغ المدفوع (للدفع الجزئي) — اختياري؛ يُحسب المتبقي في الخادم
+  let paidAmount: number | null = null;
+  if (body?.paidAmount != null && body?.paidAmount !== "") {
+    const pa = Number(body.paidAmount);
+    if (!Number.isFinite(pa) || pa < 0)
+      throw new ValidationError("المبلغ المدفوع غير صحيح");
+    paidAmount = pa;
+  }
+
   return {
     branch: branch as BranchValue,
     items,
@@ -173,5 +200,9 @@ export function parseSaleInput(body: any): SaleInput {
     customerName: asString(body?.customerName) || null,
     customerPhone: asString(body?.customerPhone) || null,
     customerNotes: asString(body?.customerNotes) || null,
+    paymentMethod: paymentMethod as PaymentMethodValue,
+    transferMethod,
+    invoiceNotes: asString(body?.invoiceNotes) || null,
+    paidAmount,
   };
 }

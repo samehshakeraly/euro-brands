@@ -1,0 +1,190 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Printer, Share2, Check } from "lucide-react";
+import toast from "react-hot-toast";
+import { Modal } from "@/components/ui/modal";
+import { BranchBadge } from "@/components/ui/badge";
+import {
+  BRANCH_LABELS,
+  PAYMENT_METHOD_LABELS,
+  TRANSFER_METHOD_LABELS,
+} from "@/lib/constants";
+import {
+  formatCurrency,
+  formatDateTime,
+  formatNumber,
+  formatSaleNumber,
+} from "@/lib/format";
+import type { SaleDTO } from "@/lib/types";
+
+function paymentLabel(sale: SaleDTO): string {
+  const base = PAYMENT_METHOD_LABELS[sale.paymentMethod];
+  if (sale.paymentMethod === "TRANSFER" && sale.transferMethod)
+    return `${base} — ${TRANSFER_METHOD_LABELS[sale.transferMethod]}`;
+  return base;
+}
+
+function receiptText(sale: SaleDTO): string {
+  const discount = sale.totalAmount - sale.finalAmount;
+  const lines = [
+    "Euro Brands",
+    `فاتورة ${formatSaleNumber(sale.saleNumber)}`,
+    formatDateTime(sale.createdAt),
+    `الفرع: ${BRANCH_LABELS[sale.branch]}`,
+    "----------------------------",
+    ...sale.items.map(
+      (it) =>
+        `${it.productName} (${it.size}) ×${it.quantity} = ${formatCurrency(it.subtotal)}`
+    ),
+    "----------------------------",
+    `الإجمالي: ${formatCurrency(sale.totalAmount)}`,
+    ...(discount > 0 ? [`الخصم: ${formatCurrency(discount)}`] : []),
+    `الصافي: ${formatCurrency(sale.finalAmount)}`,
+    `طريقة الدفع: ${paymentLabel(sale)}`,
+    `المدفوع: ${formatCurrency(sale.paidAmount)}`,
+    ...(sale.remainingAmount > 0
+      ? [`المتبقي: ${formatCurrency(sale.remainingAmount)}`]
+      : []),
+    ...(sale.customerName ? [`العميل: ${sale.customerName}`] : []),
+    "شكراً لتسوقكم من Euro Brands",
+  ];
+  return lines.join("\n");
+}
+
+export function ReceiptModal({
+  sale,
+  onClose,
+}: {
+  sale: SaleDTO | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  // فعّل نطاق طباعة الإيصال فقط أثناء فتح النافذة
+  useEffect(() => {
+    if (!sale) return;
+    document.body.classList.add("receipt-open");
+    return () => document.body.classList.remove("receipt-open");
+  }, [sale]);
+
+  if (!sale) return null;
+  const discount = sale.totalAmount - sale.finalAmount;
+
+  async function share() {
+    try {
+      await navigator.clipboard.writeText(receiptText(sale!));
+      setCopied(true);
+      toast.success("تم نسخ الفاتورة");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("تعذّر النسخ");
+    }
+  }
+
+  return (
+    <Modal
+      open={!!sale}
+      onClose={onClose}
+      title="فاتورة البيع"
+      footer={
+        <>
+          <button
+            onClick={() => window.print()}
+            className="btn btn-primary w-full sm:w-auto"
+          >
+            <Printer className="h-4 w-4" />
+            طباعة
+          </button>
+          <button onClick={share} className="btn btn-secondary w-full sm:w-auto">
+            {copied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+            مشاركة (نسخ)
+          </button>
+          <button onClick={onClose} className="btn btn-ghost w-full sm:w-auto">
+            إغلاق
+          </button>
+        </>
+      }
+    >
+      <div className="print-receipt">
+        <div className="flex items-start justify-between border-b pb-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-sm font-extrabold text-white">
+              EB
+            </span>
+            <span className="text-lg font-extrabold text-text">Euro Brands</span>
+          </div>
+          <div className="text-left">
+            <p className="text-xl font-extrabold text-accent nums">
+              {formatSaleNumber(sale.saleNumber)}
+            </p>
+            <p className="text-xs text-muted nums">
+              {formatDateTime(sale.createdAt)}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between py-3 text-sm">
+          <BranchBadge branch={sale.branch} />
+          {sale.customerName && (
+            <span className="text-text">{sale.customerName}</span>
+          )}
+        </div>
+
+        <div className="space-y-1.5 border-y py-3">
+          {sale.items.map((it) => (
+            <div key={it.id} className="flex justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-text">
+                {it.productName}{" "}
+                <span className="text-muted nums">({it.size}) ×{it.quantity}</span>
+              </span>
+              <span className="shrink-0 text-text nums">
+                {formatCurrency(it.subtotal)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-1.5 pt-3 text-sm">
+          <div className="flex justify-between text-muted">
+            <span>الإجمالي</span>
+            <span className="nums">{formatCurrency(sale.totalAmount)}</span>
+          </div>
+          {discount > 0 && (
+            <div className="flex justify-between text-warning">
+              <span>الخصم</span>
+              <span className="nums">- {formatCurrency(discount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-base font-extrabold text-text">
+            <span>الصافي</span>
+            <span className="nums">{formatCurrency(sale.finalAmount)}</span>
+          </div>
+          <div className="flex justify-between text-muted">
+            <span>طريقة الدفع</span>
+            <span>{paymentLabel(sale)}</span>
+          </div>
+          <div className="flex justify-between text-success">
+            <span>المدفوع</span>
+            <span className="nums">{formatCurrency(sale.paidAmount)}</span>
+          </div>
+          {sale.remainingAmount > 0 && (
+            <div className="flex justify-between font-bold text-warning">
+              <span>المتبقي</span>
+              <span className="nums">{formatCurrency(sale.remainingAmount)}</span>
+            </div>
+          )}
+          {sale.invoiceNotes && (
+            <p className="border-t pt-2 text-xs text-muted">
+              ملاحظات: {sale.invoiceNotes}
+            </p>
+          )}
+        </div>
+
+        <p className="mt-4 text-center text-xs text-muted">
+          شكراً لتسوقكم من Euro Brands
+        </p>
+      </div>
+    </Modal>
+  );
+}
