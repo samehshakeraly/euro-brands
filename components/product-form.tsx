@@ -15,6 +15,7 @@ import {
 import toast from "react-hot-toast";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { NumberInput, TextOnlyInput } from "@/components/ui/inputs";
 import { AddBrandModal } from "@/components/add-brand-modal";
 import { AddTypeModal } from "@/components/add-type-modal";
 import { apiPost, apiPut, uploadImage } from "@/lib/client";
@@ -348,10 +349,10 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="label">اسم المنتج *</label>
-            <input
+            <TextOnlyInput
               className="input"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={setName}
               placeholder="مثال: تيشيرت قطن كلاسيك"
             />
           </div>
@@ -669,40 +670,32 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   </VariantField>
 
                   <VariantField label="الكمية">
-                    <input
-                      type="number"
-                      min={0}
-                      className="input nums"
+                    <NumberInput
+                      className="input"
                       value={row.quantity}
-                      onChange={(e) =>
-                        updateRow(row.clientId, { quantity: e.target.value })
+                      onChange={(v) =>
+                        updateRow(row.clientId, { quantity: v })
                       }
                     />
                   </VariantField>
 
                   <VariantField label="الحد الأدنى">
-                    <input
-                      type="number"
-                      min={0}
-                      className="input nums"
+                    <NumberInput
+                      className="input"
                       value={row.minQuantity}
-                      onChange={(e) =>
-                        updateRow(row.clientId, {
-                          minQuantity: e.target.value,
-                        })
+                      onChange={(v) =>
+                        updateRow(row.clientId, { minQuantity: v })
                       }
                     />
                   </VariantField>
 
                   <VariantField label="السعر (ج.م)">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="input nums"
+                    <NumberInput
+                      className="input"
+                      allowDecimal
                       value={row.price}
-                      onChange={(e) =>
-                        updateRow(row.clientId, { price: e.target.value })
+                      onChange={(v) =>
+                        updateRow(row.clientId, { price: v })
                       }
                     />
                   </VariantField>

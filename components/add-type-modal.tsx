@@ -4,6 +4,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
+import { TextOnlyInput } from "@/components/ui/inputs";
 import { apiPost } from "@/lib/client";
 import { CATEGORY_LABELS, type CategoryValue } from "@/lib/constants";
 import type { ProductTypeDTO } from "@/lib/types";
@@ -78,11 +79,11 @@ export function AddTypeModal({
       <div className="space-y-3">
         <div>
           <label className="label">اسم النوع</label>
-          <input
+          <TextOnlyInput
             autoFocus
             className="input"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={setName}
             placeholder="مثال: تيشرت بولو"
           />
         </div>

@@ -26,6 +26,8 @@ import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { Spinner, PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { NumberInput, PhoneInput, TextOnlyInput } from "@/components/ui/inputs";
+import { isValidEgyPhone } from "@/lib/input-validators";
 import { cn } from "@/lib/cn";
 import { calcDiscount, round2 } from "@/lib/sale-utils";
 import {
@@ -394,6 +396,8 @@ function PosRegister({
     if (cart.length === 0) return toast.error("الفاتورة فارغة");
     if (paymentMethod === "TRANSFER" && !transferMethod)
       return toast.error("اختر طريقة التحويل");
+    if (customerPhone && !isValidEgyPhone(customerPhone))
+      return toast.error("رقم الهاتف غير مكتمل — يجب أن يتكوّن من 11 رقم");
     if (deliveryOn) {
       if (!orderSource) return toast.error("اختر مصدر الطلب");
       if (!deliveryMethod) return toast.error("اختر طريقة التوصيل");
@@ -685,15 +689,13 @@ function PosRegister({
                         >
                           <Minus className="h-4 w-4" />
                         </button>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          min={1}
+                        <NumberInput
+                          value={String(item.quantity)}
                           max={item.available}
-                          onChange={(e) =>
-                            setQty(item.variantId, Number(e.target.value))
+                          onChange={(v) =>
+                            setQty(item.variantId, Number(v) || 1)
                           }
-                          className="input h-10 w-16 px-1 text-center nums"
+                          className="input h-10 w-16 px-1 text-center"
                         />
                         <button
                           onClick={() => setQty(item.variantId, item.quantity + 1)}
@@ -720,18 +722,13 @@ function PosRegister({
                 بيانات العميل (اختياري)
               </summary>
               <div className="space-y-2 border-t p-3">
-                <input
+                <TextOnlyInput
                   className="input"
                   placeholder="اسم العميل"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={setCustomerName}
                 />
-                <input
-                  className="input"
-                  placeholder="رقم الهاتف"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                />
+                <PhoneInput value={customerPhone} onChange={setCustomerPhone} />
                 <textarea
                   className="input min-h-[56px] resize-y"
                   placeholder="ملاحظات العميل"
@@ -812,13 +809,15 @@ function PosRegister({
                   <option value="FIXED">مبلغ ثابت</option>
                 </select>
                 {discountType !== "NONE" && (
-                  <input
-                    type="number"
-                    min={0}
-                    className="input nums"
-                    placeholder={discountType === "PERCENTAGE" ? "% النسبة" : "المبلغ"}
+                  <NumberInput
+                    className="input"
+                    allowDecimal
+                    max={discountType === "PERCENTAGE" ? 100 : undefined}
+                    placeholder={
+                      discountType === "PERCENTAGE" ? "% النسبة" : "المبلغ"
+                    }
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
+                    onChange={setDiscountValue}
                   />
                 )}
               </div>
@@ -886,11 +885,11 @@ function PosRegister({
                       <label className="mb-1 block text-xs text-muted">
                         رقم التتبع (Bosta)
                       </label>
-                      <input
-                        className="input nums"
-                        placeholder="مثال: BST-1234567"
+                      <NumberInput
+                        className="input"
+                        placeholder="أدخل أرقام التتبع فقط"
                         value={trackingNumber}
-                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        onChange={setTrackingNumber}
                       />
                     </div>
                   )}
@@ -937,13 +936,12 @@ function PosRegister({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div>
                     <span className="mb-1 block text-xs text-muted">المبلغ المدفوع</span>
-                    <input
-                      type="number"
-                      min={0}
+                    <NumberInput
+                      className="input"
+                      allowDecimal
                       max={finalAmount}
-                      className="input nums"
                       value={paidInput}
-                      onChange={(e) => setPaidInput(e.target.value)}
+                      onChange={setPaidInput}
                     />
                   </div>
                   <div>
