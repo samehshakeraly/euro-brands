@@ -979,7 +979,17 @@ export function mockReports(sp: URLSearchParams): ReportsData {
   const categoryMap = new Map<CategoryValue, { total: number; qty: number }>();
   const productMap = new Map<
     string,
-    { name: string; brand: string; qty: number; revenue: number }
+    {
+      name: string;
+      brand: string;
+      qty: number;
+      revenue: number;
+      image: string | null;
+    }
+  >();
+  const customerMap = new Map<
+    string,
+    { name: string; phone: string | null; total: number; count: number }
   >();
 
   const dayBuckets = new Map<string, number>();
@@ -987,10 +997,27 @@ export function mockReports(sp: URLSearchParams): ReportsData {
     dayBuckets.set(format(d, "yyyy-MM-dd"), 0);
 
   let totalSales = 0;
+  let grossSales = 0;
+  let discountedCount = 0;
   let itemsSold = 0;
 
   for (const sale of inRange) {
     totalSales += sale.finalAmount;
+    grossSales += sale.totalAmount;
+    if (sale.totalAmount - sale.finalAmount > 0.001) discountedCount++;
+    const cname = (sale.customerName ?? "").trim();
+    if (cname) {
+      const ck = `${cname}|${sale.customerPhone ?? ""}`;
+      const cust = customerMap.get(ck) ?? {
+        name: cname,
+        phone: sale.customerPhone ?? null,
+        total: 0,
+        count: 0,
+      };
+      cust.total += sale.finalAmount;
+      cust.count += 1;
+      customerMap.set(ck, cust);
+    }
     const b = branchMap.get(sale.branch)!;
     b.total += sale.finalAmount;
     b.count += 1;
@@ -1013,6 +1040,7 @@ export function mockReports(sp: URLSearchParams): ReportsData {
         brand: ref?.product.brand ?? "",
         qty: 0,
         revenue: 0,
+        image: ref?.product.images?.[0] ?? null,
       };
       p.qty += item.quantity;
       p.revenue += item.subtotal;
@@ -1036,8 +1064,31 @@ export function mockReports(sp: URLSearchParams): ReportsData {
     .sort((a, b) => a.quantity - b.quantity)
     .slice(0, 100);
 
+  // منتجات راكدة: في المخزون (كمية > 0) وبلا مبيعات في الفترة
+  const slowMoving = store.products
+    .filter(
+      (p) =>
+        !productMap.has(p.id) &&
+        p.variants.reduce((s, v) => s + v.quantity, 0) > 0
+    )
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      brand: p.brand,
+      quantity: p.variants.reduce((s, v) => s + v.quantity, 0),
+    }))
+    .slice(0, 50);
+
+  const topCustomers = [...customerMap.values()]
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5)
+    .map((c) => ({ ...c, total: round2(c.total) }));
+
   return {
     totalSales: round2(totalSales),
+    grossSales: round2(grossSales),
+    discountTotal: round2(grossSales - totalSales),
+    discountedCount,
     invoicesCount: inRange.length,
     itemsSold,
     avgInvoice: inRange.length ? round2(totalSales / inRange.length) : 0,
@@ -1059,6 +1110,8 @@ export function mockReports(sp: URLSearchParams): ReportsData {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10)
       .map((p) => ({ ...p, revenue: round2(p.revenue) })),
+    topCustomers,
+    slowMoving,
     lowStock,
   };
 }

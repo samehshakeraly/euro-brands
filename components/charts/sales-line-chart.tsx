@@ -8,6 +8,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from "recharts";
 import { format } from "date-fns";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -29,12 +30,20 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export function SalesLineChart({ data }: { data: Point[] }) {
+export function SalesLineChart({ data, avg }: { data: Point[]; avg?: number }) {
   return (
     <div dir="ltr" className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          {avg != null && avg > 0 && (
+            <ReferenceLine
+              y={avg}
+              stroke="#c9851a"
+              strokeDasharray="5 4"
+              ifOverflow="extendDomain"
+            />
+          )}
           <XAxis
             dataKey="date"
             tickFormatter={(d) => format(new Date(d), "dd/MM")}

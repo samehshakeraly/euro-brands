@@ -172,7 +172,10 @@ export interface InsightsResponse {
 
 // بيانات صفحة التقارير
 export interface ReportsData {
-  totalSales: number;
+  totalSales: number; // الصافي بعد الخصم
+  grossSales: number; // الإجمالي قبل الخصم
+  discountTotal: number; // إجمالي الخصومات
+  discountedCount: number; // عدد الفواتير التي فيها خصم
   invoicesCount: number;
   itemsSold: number;
   avgInvoice: number;
@@ -184,6 +187,19 @@ export interface ReportsData {
     brand: string;
     qty: number;
     revenue: number;
+    image: string | null;
+  }[];
+  topCustomers: {
+    name: string;
+    phone: string | null;
+    total: number;
+    count: number;
+  }[];
+  slowMoving: {
+    id: string;
+    name: string;
+    brand: string;
+    quantity: number;
   }[];
   lowStock: {
     id: string;

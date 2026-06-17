@@ -1,190 +1,180 @@
 import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import html2canvas from "html2canvas";
 import { format } from "date-fns";
-import { ar } from "./arabic";
-import { TAJAWAL_REGULAR_BASE64, TAJAWAL_BOLD_BASE64 } from "./tajawal-font";
 import { BRANCH_LABELS, CATEGORY_LABELS } from "@/lib/constants";
 import type { ReportsData } from "@/lib/types";
 
-const ACCENT: [number, number, number] = [108, 99, 255];
-const MUTED: [number, number, number] = [120, 124, 140];
-const DARK: [number, number, number] = [26, 29, 46];
-
-// أرقام بالخانات الغربية لتفادي مشاكل الاتجاه في PDF
-function num(x: number): string {
-  return (Math.round(x * 100) / 100).toLocaleString("en-US");
-}
+// عرض الأرقام والعملة بالعربية (المتصفح يرسمها بشكل صحيح داخل html2canvas)
+const num = (x: number) =>
+  (x ?? 0).toLocaleString("ar-EG", { maximumFractionDigits: 2 });
 const money = (x: number) => `${num(x)} ج.م`;
 
-// عكس ترتيب الأعمدة (لـ RTL) مع تشكيل كل خلية
-const R = (cells: string[]) => cells.slice().reverse().map((c) => ar(c));
+function row(cells: string[], opts: { head?: boolean; strong?: number } = {}) {
+  const tag = opts.head ? "th" : "td";
+  const base = opts.head
+    ? "padding:8px 10px;background:#6c63ff;color:#fff;font-weight:700;text-align:right;"
+    : "padding:7px 10px;border-bottom:1px solid #e2e4ec;text-align:right;";
+  return `<tr>${cells
+    .map(
+      (c, i) =>
+        `<${tag} style="${base}${
+          opts.strong === i ? "font-weight:700;" : ""
+        }">${c}</${tag}>`
+    )
+    .join("")}</tr>`;
+}
 
-export function generateReportPdf(
+function table(headers: string[], rows: string[][]): string {
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;">
+    <thead>${row(headers, { head: true })}</thead>
+    <tbody>${rows.map((r) => row(r)).join("")}</tbody>
+  </table>`;
+}
+
+function summaryCard(label: string, value: string, color: string): string {
+  return `<div style="flex:1;min-width:140px;border:1px solid #e2e4ec;border-top:3px solid ${color};border-radius:10px;padding:12px 14px;">
+    <div style="font-size:11px;color:#9295a8;">${label}</div>
+    <div style="font-size:18px;font-weight:800;color:#1a1d2e;margin-top:4px;">${value}</div>
+  </div>`;
+}
+
+function sectionTitle(t: string): string {
+  return `<h2 style="font-size:15px;font-weight:800;color:#1a1d2e;margin:22px 0 4px;border-right:4px solid #6c63ff;padding-right:8px;">${t}</h2>`;
+}
+
+function buildReportHtml(data: ReportsData, range: { from: string; to: string }) {
+  const el = document.createElement("div");
+  el.setAttribute("dir", "rtl");
+  el.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;color:#1a1d2e;" +
+    "font-family:var(--font-tajawal),Tajawal,'Segoe UI',sans-serif;padding:34px;box-sizing:border-box;";
+
+  const fromD = format(new Date(range.from), "yyyy/MM/dd");
+  const toD = format(new Date(range.to), "yyyy/MM/dd");
+  const discountPct = data.grossSales
+    ? (data.discountTotal / data.grossSales) * 100
+    : 0;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #6c63ff;padding-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:42px;height:42px;border-radius:10px;background:#6c63ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;">EB</div>
+        <div>
+          <div style="font-size:20px;font-weight:800;color:#6c63ff;">Euro Brands</div>
+          <div style="font-size:12px;color:#9295a8;">تقرير المبيعات والمخزون</div>
+        </div>
+      </div>
+      <div style="text-align:left;font-size:12px;color:#9295a8;">
+        <div>الفترة: ${fromD} — ${toD}</div>
+        <div>تاريخ التقرير: ${format(new Date(), "yyyy/MM/dd HH:mm")}</div>
+      </div>
+    </div>
+
+    ${sectionTitle("الملخّص")}
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
+      ${summaryCard("إجمالي المبيعات (الصافي)", money(data.totalSales), "#6c63ff")}
+      ${summaryCard("قبل الخصم", money(data.grossSales), "#6c63ff")}
+      ${summaryCard("عدد الفواتير", num(data.invoicesCount), "#3b9a6e")}
+      ${summaryCard("القطع المباعة", num(data.itemsSold), "#3b9a6e")}
+      ${summaryCard("متوسط الفاتورة", money(data.avgInvoice), "#6c63ff")}
+    </div>
+
+    ${sectionTitle("ملخّص الخصومات")}
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
+      ${summaryCard("إجمالي الخصومات", money(data.discountTotal), "#c9851a")}
+      ${summaryCard("فواتير عليها خصم", num(data.discountedCount), "#c9851a")}
+      ${summaryCard("نسبة الخصم من المبيعات", `${num(discountPct)}%`, "#c9851a")}
+    </div>
+
+    ${sectionTitle("مقارنة الفروع")}
+    ${table(
+      ["الفرع", "عدد الفواتير", "الإجمالي"],
+      data.byBranch.map((b) => [BRANCH_LABELS[b.branch], num(b.count), money(b.total)])
+    )}
+
+    ${
+      data.byCategory.length
+        ? sectionTitle("المبيعات حسب الفئة") +
+          table(
+            ["الفئة", "الكمية", "الإيراد"],
+            data.byCategory.map((c) => [
+              CATEGORY_LABELS[c.category],
+              num(c.qty),
+              money(c.total),
+            ])
+          )
+        : ""
+    }
+
+    ${sectionTitle("أفضل 5 منتجات مبيعاً")}
+    ${
+      data.topProducts.length
+        ? table(
+            ["المنتج", "البراند", "الكمية", "الإيراد"],
+            data.topProducts
+              .slice(0, 5)
+              .map((p) => [p.name, p.brand, num(p.qty), money(p.revenue)])
+          )
+        : `<p style="font-size:12px;color:#9295a8;">لا توجد مبيعات في الفترة.</p>`
+    }
+
+    ${sectionTitle("أصناف تحتاج تزويد")}
+    ${
+      data.lowStock.length
+        ? table(
+            ["المنتج", "الفرع", "المقاس", "الكمية"],
+            data.lowStock
+              .slice(0, 25)
+              .map((v) => [
+                v.productName,
+                BRANCH_LABELS[v.branch],
+                v.size,
+                num(v.quantity),
+              ])
+          )
+        : `<p style="font-size:12px;color:#9295a8;">لا توجد أصناف منخفضة الكمية.</p>`
+    }
+
+    <div style="margin-top:26px;border-top:1px solid #e2e4ec;padding-top:10px;font-size:10px;color:#9295a8;text-align:center;">
+      Euro Brands — تم إنشاء هذا التقرير آلياً
+    </div>
+  `;
+
+  document.body.appendChild(el);
+  return el;
+}
+
+export async function generateReportPdf(
   data: ReportsData,
   range: { from: string; to: string }
 ) {
-  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-  // تسجيل خط Tajawal (عادي + عريض)
-  doc.addFileToVFS("Tajawal-Regular.ttf", TAJAWAL_REGULAR_BASE64);
-  doc.addFont("Tajawal-Regular.ttf", "Tajawal", "normal");
-  doc.addFileToVFS("Tajawal-Bold.ttf", TAJAWAL_BOLD_BASE64);
-  doc.addFont("Tajawal-Bold.ttf", "Tajawal", "bold");
-  doc.setFont("Tajawal", "normal");
-
-  const pageW = doc.internal.pageSize.getWidth();
-  const margin = 40;
-  const right = pageW - margin;
-
-  // ---- الترويسة ----
-  doc.setFont("Tajawal", "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(...ACCENT);
-  doc.text(ar("تقرير Euro Brands"), right, 50, { align: "right" });
-
-  doc.setFont("Tajawal", "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(...MUTED);
-  const fromD = format(new Date(range.from), "yyyy/MM/dd");
-  const toD = format(new Date(range.to), "yyyy/MM/dd");
-  doc.text(ar(`الفترة: من ${fromD} إلى ${toD}`), right, 70, { align: "right" });
-  doc.text(
-    ar(`تاريخ التقرير: ${format(new Date(), "yyyy/MM/dd HH:mm")}`),
-    right,
-    86,
-    { align: "right" }
-  );
-
-  let y = 110;
-
-  const sectionTitle = (title: string, atY: number) => {
-    doc.setFont("Tajawal", "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(...DARK);
-    doc.text(ar(title), right, atY, { align: "right" });
-    return atY + 8;
-  };
-
-  const tableFont = {
-    font: "Tajawal",
-    halign: "right" as const,
-    fontSize: 10,
-    cellPadding: 5,
-  };
-  const headStyle = {
-    font: "Tajawal",
-    fontStyle: "bold" as const,
-    fillColor: ACCENT,
-    textColor: [255, 255, 255] as [number, number, number],
-    halign: "right" as const,
-  };
-  const finalY = () => (doc as any).lastAutoTable.finalY as number;
-
-  // ---- ملخّص ----
-  y = sectionTitle("الملخّص", y);
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    styles: tableFont,
-    headStyles: headStyle,
-    head: [R(["البيان", "القيمة"])],
-    body: [
-      R(["إجمالي المبيعات", money(data.totalSales)]),
-      R(["عدد الفواتير", num(data.invoicesCount)]),
-      R(["القطع المباعة", num(data.itemsSold)]),
-      R(["متوسط قيمة الفاتورة", money(data.avgInvoice)]),
-    ],
-  });
-  y = finalY() + 22;
-
-  // ---- مقارنة الفروع ----
-  y = sectionTitle("مقارنة الفروع", y);
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    styles: tableFont,
-    headStyles: headStyle,
-    head: [R(["الفرع", "عدد الفواتير", "الإجمالي"])],
-    body: data.byBranch.map((b) =>
-      R([BRANCH_LABELS[b.branch], num(b.count), money(b.total)])
-    ),
-  });
-  y = finalY() + 22;
-
-  // ---- المبيعات حسب الفئة ----
-  if (data.byCategory.length) {
-    y = sectionTitle("المبيعات حسب الفئة", y);
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margin, right: margin },
-      styles: tableFont,
-      headStyles: headStyle,
-      head: [R(["الفئة", "الكمية", "الإيراد"])],
-      body: data.byCategory.map((c) =>
-        R([CATEGORY_LABELS[c.category], num(c.qty), money(c.total)])
-      ),
+  const el = buildReportHtml(data, range);
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      logging: false,
     });
-    y = finalY() + 22;
+    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgW = pageW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    const imgData = canvas.toDataURL("image/png");
+
+    let position = 0;
+    let remaining = imgH;
+    pdf.addImage(imgData, "PNG", 0, position, imgW, imgH);
+    remaining -= pageH;
+    while (remaining > 0) {
+      position -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgW, imgH);
+      remaining -= pageH;
+    }
+
+    pdf.save(`euro-brands-report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+  } finally {
+    document.body.removeChild(el);
   }
-
-  // ---- أكثر المنتجات مبيعاً ----
-  if (data.topProducts.length) {
-    y = sectionTitle("أكثر المنتجات مبيعاً", y);
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margin, right: margin },
-      styles: tableFont,
-      headStyles: headStyle,
-      head: [R(["المنتج", "البراند", "الكمية", "الإيراد"])],
-      body: data.topProducts.map((p) =>
-        R([p.name, p.brand, num(p.qty), money(p.revenue)])
-      ),
-    });
-    y = finalY() + 22;
-  }
-
-  // ---- تنبيهات نقص المخزون ----
-  y = sectionTitle("أصناف تحتاج تزويد", y);
-  if (data.lowStock.length === 0) {
-    doc.setFont("Tajawal", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(...MUTED);
-    doc.text(ar("لا توجد أصناف منخفضة أو نافدة الكمية."), right, y + 14, {
-      align: "right",
-    });
-  } else {
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margin, right: margin },
-      styles: tableFont,
-      headStyles: { ...headStyle, fillColor: [201, 133, 26] },
-      head: [R(["المنتج", "البراند", "الفرع", "المقاس", "الكمية"])],
-      body: data.lowStock
-        .slice(0, 40)
-        .map((v) =>
-          R([
-            v.productName,
-            v.brand,
-            BRANCH_LABELS[v.branch],
-            v.size,
-            num(v.quantity),
-          ])
-        ),
-    });
-  }
-
-  // ---- ترقيم الصفحات ----
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    doc.setFont("Tajawal", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...MUTED);
-    const h = doc.internal.pageSize.getHeight();
-    doc.text(ar(`صفحة ${i} من ${pages}`), pageW / 2, h - 20, {
-      align: "center",
-    });
-  }
-
-  doc.save(`euro-brands-report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
 }

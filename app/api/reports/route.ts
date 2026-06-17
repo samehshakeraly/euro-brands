@@ -32,14 +32,19 @@ export async function GET(req: Request) {
       ? new Date(searchParams.get("to")!)
       : endOfDay(now);
 
-    const [sales, lowStockVariants] = await Promise.all([
+    const [sales, lowStockVariants, allProducts] = await Promise.all([
       prisma.sale.findMany({
         where: { createdAt: { gte: from, lte: to } },
         include: {
           items: {
             include: {
               product: {
-                select: { name: true, brand: true, category: true },
+                select: {
+                  name: true,
+                  brand: true,
+                  category: true,
+                  images: true,
+                },
               },
             },
           },
@@ -52,6 +57,14 @@ export async function GET(req: Request) {
         orderBy: { quantity: "asc" },
         take: 100,
       }),
+      prisma.product.findMany({
+        select: {
+          id: true,
+          name: true,
+          brand: true,
+          variants: { select: { quantity: true } },
+        },
+      }),
     ]);
 
     const branchMap = new Map<BranchValue, { total: number; count: number }>();
@@ -63,7 +76,17 @@ export async function GET(req: Request) {
     >();
     const productMap = new Map<
       string,
-      { name: string; brand: string; qty: number; revenue: number }
+      {
+        name: string;
+        brand: string;
+        qty: number;
+        revenue: number;
+        image: string | null;
+      }
+    >();
+    const customerMap = new Map<
+      string,
+      { name: string; phone: string | null; total: number; count: number }
     >();
 
     const dayBuckets = new Map<string, number>();
@@ -72,10 +95,28 @@ export async function GET(req: Request) {
     }
 
     let totalSales = 0;
+    let grossSales = 0;
+    let discountedCount = 0;
     let itemsSold = 0;
 
     for (const sale of sales) {
       totalSales += sale.finalAmount;
+      grossSales += sale.totalAmount;
+      if (sale.totalAmount - sale.finalAmount > 0.001) discountedCount++;
+
+      const cname = (sale.customerName ?? "").trim();
+      if (cname) {
+        const ck = `${cname}|${sale.customerPhone ?? ""}`;
+        const cust = customerMap.get(ck) ?? {
+          name: cname,
+          phone: sale.customerPhone ?? null,
+          total: 0,
+          count: 0,
+        };
+        cust.total += sale.finalAmount;
+        cust.count += 1;
+        customerMap.set(ck, cust);
+      }
 
       const b = branchMap.get(sale.branch as BranchValue)!;
       b.total += sale.finalAmount;
@@ -99,6 +140,7 @@ export async function GET(req: Request) {
           brand: item.product.brand,
           qty: 0,
           revenue: 0,
+          image: item.product.images?.[0] ?? null,
         };
         p.qty += item.quantity;
         p.revenue += item.subtotal;
@@ -106,13 +148,24 @@ export async function GET(req: Request) {
       }
     }
 
-    const topProducts = [...productMap.values()]
-      .sort((a, b) => b.qty - a.qty)
-      .slice(0, 10)
-      .map((p) => ({ ...p, revenue: round2(p.revenue) }));
+    const slowMoving = allProducts
+      .filter((p) => {
+        const stock = p.variants.reduce((s, v) => s + v.quantity, 0);
+        return !productMap.has(p.id) && stock > 0;
+      })
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        brand: p.brand,
+        quantity: p.variants.reduce((s, v) => s + v.quantity, 0),
+      }))
+      .slice(0, 50);
 
     const result: ReportsData = {
       totalSales: round2(totalSales),
+      grossSales: round2(grossSales),
+      discountTotal: round2(grossSales - totalSales),
+      discountedCount,
       invoicesCount: sales.length,
       itemsSold,
       avgInvoice: sales.length ? round2(totalSales / sales.length) : 0,
@@ -130,7 +183,15 @@ export async function GET(req: Request) {
         date,
         total: round2(total),
       })),
-      topProducts,
+      topProducts: [...productMap.values()]
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 10)
+        .map((p) => ({ ...p, revenue: round2(p.revenue) })),
+      topCustomers: [...customerMap.values()]
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5)
+        .map((c) => ({ ...c, total: round2(c.total) })),
+      slowMoving,
       lowStock: lowStockVariants.map((v) => ({
         id: v.id,
         productName: v.product.name,

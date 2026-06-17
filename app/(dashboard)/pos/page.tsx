@@ -11,10 +11,12 @@ import {
   CheckCircle2,
   Package,
   RefreshCcw,
+  ScanLine,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiPost } from "@/lib/client";
+import { BarcodeScanner } from "@/components/barcode-scanner";
 import { Card } from "@/components/ui/card";
 import { Spinner, PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -112,6 +114,7 @@ function PosRegister({
   const [customerNotes, setCustomerNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [lastSale, setLastSale] = useState<SaleDTO | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(term.trim()), 300);
@@ -263,15 +266,26 @@ function PosRegister({
         {/* البحث والنتائج (يسار) */}
         <div className="order-1 flex-1 md:order-2">
           <Card className="p-4">
-            <div className="relative mb-4">
-              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                autoFocus
-                className="input pr-9"
-                placeholder="ابحث عن منتج بالاسم أو البراند..."
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-              />
+            <div className="mb-4 flex gap-2">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  autoFocus
+                  className="input pr-9"
+                  placeholder="ابحث بالاسم أو البراند أو الكود/الباركود..."
+                  value={term}
+                  onChange={(e) => setTerm(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setScannerOpen(true)}
+                className="btn btn-secondary flex-shrink-0"
+                title="مسح الباركود بالكاميرا"
+              >
+                <ScanLine className="h-4 w-4" />
+                <span className="hidden sm:inline">مسح</span>
+              </button>
             </div>
 
             {loading ? (
@@ -509,6 +523,15 @@ function PosRegister({
           </span>
         </button>
       </div>
+
+      <BarcodeScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={(code) => {
+          setTerm(code);
+          setScannerOpen(false);
+        }}
+      />
     </div>
   );
 }
