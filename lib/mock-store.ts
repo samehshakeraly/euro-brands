@@ -15,6 +15,7 @@ import {
   type DiscountTypeValue,
   type PaymentMethodValue,
   type TransferMethodValue,
+  type SaleStatusValue,
 } from "./constants";
 import { ValidationError } from "./validate";
 import type { NormProduct, NormSale } from "./insights-analytics";
@@ -88,6 +89,8 @@ interface MSale {
   invoiceNotes: string | null;
   paidAmount: number;
   remainingAmount: number;
+  status: SaleStatusValue;
+  cancellationReason: string | null;
   createdAt: Date;
   items: MItem[];
 }
@@ -411,6 +414,8 @@ function buildStore(): Store {
       invoiceNotes: null,
       paidAmount,
       remainingAmount: round2(finalAmount - paidAmount),
+      status: "COMPLETED",
+      cancellationReason: null,
       createdAt: created,
       items,
     });
@@ -428,6 +433,21 @@ function buildStore(): Store {
       )
     ) {
       store.brands.push({ id: id("b"), name: p.brand, category: p.category });
+    }
+  }
+
+  // إلغاء آخر فاتورتين للعرض (مع إعادة الكميات للمخزون)
+  for (const s of store.sales.slice(-2)) {
+    s.status = "CANCELLED";
+    s.cancellationReason = "طلب العميل";
+    for (const it of s.items) {
+      for (const p of store.products) {
+        const v = p.variants.find((x) => x.id === it.variantId);
+        if (v) {
+          v.quantity += it.quantity;
+          break;
+        }
+      }
     }
   }
 
@@ -504,6 +524,8 @@ function shapeSale(s: MSale): SaleDTO {
     invoiceNotes: s.invoiceNotes,
     paidAmount: s.paidAmount,
     remainingAmount: s.remainingAmount,
+    status: s.status,
+    cancellationReason: s.cancellationReason,
     createdAt: s.createdAt.toISOString(),
     items: s.items.map((it) => {
       const ref = findVariant(it.variantId);
@@ -624,7 +646,9 @@ export function mockNormalizedData(): {
       size: v.size,
     })),
   }));
-  const sales: NormSale[] = store.sales.map((s) => ({
+  const sales: NormSale[] = store.sales
+    .filter((s) => s.status !== "CANCELLED")
+    .map((s) => ({
     branch: s.branch,
     finalAmount: s.finalAmount,
     totalAmount: s.totalAmount,
@@ -653,7 +677,11 @@ export function mockHomeStats(): {
     let sales = 0;
     let count = 0;
     for (const s of store.sales)
-      if (s.createdAt >= from && s.createdAt <= to) {
+      if (
+        s.status !== "CANCELLED" &&
+        s.createdAt >= from &&
+        s.createdAt <= to
+      ) {
         sales += s.finalAmount;
         count++;
       }
@@ -859,12 +887,30 @@ export function mockListSales(sp: URLSearchParams): SaleDTO[] {
   const from = sp.get("from") ? new Date(sp.get("from")!) : null;
   const to = sp.get("to") ? new Date(sp.get("to")!) : null;
   const search = sp.get("search")?.trim();
+  const payment = sp.get("payment"); // CASH/VISA/VODAFONE_CASH/INSTAPAY
+  const status = sp.get("status"); // COMPLETED/CANCELLED/REMAINING
   const limit = Math.min(Number(sp.get("limit")) || 500, 1000);
+
+  const productName = (variantId: string) =>
+    findVariant(variantId)?.product.name ?? "";
 
   let list = [...store.sales];
   if (branch) list = list.filter((s) => s.branch === branch);
   if (from) list = list.filter((s) => s.createdAt >= from);
   if (to) list = list.filter((s) => s.createdAt <= to);
+
+  if (payment === "CASH" || payment === "VISA")
+    list = list.filter((s) => s.paymentMethod === payment);
+  else if (payment === "VODAFONE_CASH" || payment === "INSTAPAY")
+    list = list.filter(
+      (s) => s.paymentMethod === "TRANSFER" && s.transferMethod === payment
+    );
+
+  if (status === "COMPLETED") list = list.filter((s) => s.status === "COMPLETED");
+  else if (status === "CANCELLED")
+    list = list.filter((s) => s.status === "CANCELLED");
+  else if (status === "REMAINING")
+    list = list.filter((s) => s.status !== "CANCELLED" && s.remainingAmount > 0);
 
   if (search) {
     const num = Number(search.replace(/[#\s]/g, ""));
@@ -873,7 +919,8 @@ export function mockListSales(sp: URLSearchParams): SaleDTO[] {
       (s) =>
         (Number.isInteger(num) && s.saleNumber === num) ||
         (s.customerName ?? "").toLowerCase().includes(q) ||
-        (s.customerPhone ?? "").includes(search)
+        (s.customerPhone ?? "").includes(search) ||
+        s.items.some((it) => productName(it.variantId).toLowerCase().includes(q))
     );
   }
 
@@ -958,11 +1005,32 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
     invoiceNotes: input.invoiceNotes ?? null,
     paidAmount: round2(paidAmount),
     remainingAmount: round2(finalAmount - paidAmount),
+    status: "COMPLETED",
+    cancellationReason: null,
     createdAt: new Date(),
     items,
   };
   store.sales.push(sale);
   return shapeSale(sale);
+}
+
+// إلغاء فاتورة وإعادة الكميات للمخزون
+export function mockCancelSale(
+  id: string,
+  reason: string
+): { ok: true; sale: SaleDTO } | { ok: false; status: number; error: string } {
+  const sale = store.sales.find((s) => s.id === id);
+  if (!sale) return { ok: false, status: 404, error: "الفاتورة غير موجودة" };
+  if (sale.status === "CANCELLED")
+    return { ok: false, status: 409, error: "الفاتورة ملغية بالفعل" };
+
+  for (const it of sale.items) {
+    const ref = findVariant(it.variantId);
+    if (ref) ref.variant.quantity += it.quantity;
+  }
+  sale.status = "CANCELLED";
+  sale.cancellationReason = reason || "—";
+  return { ok: true, sale: shapeSale(sale) };
 }
 
 // ----------------------------------------------------
@@ -983,10 +1051,13 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
   const todayEnd = endOfDay(now);
 
   const inRange = store.sales.filter(
-    (s) => s.createdAt >= from && s.createdAt <= to
+    (s) => s.status !== "CANCELLED" && s.createdAt >= from && s.createdAt <= to
   );
   const today = store.sales.filter(
-    (s) => s.createdAt >= todayStart && s.createdAt <= todayEnd
+    (s) =>
+      s.status !== "CANCELLED" &&
+      s.createdAt >= todayStart &&
+      s.createdAt <= todayEnd
   );
 
   const branchMap = new Map<BranchValue, { total: number; count: number }>();
@@ -1069,7 +1140,7 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
 export function mockReports(sp: URLSearchParams): ReportsData {
   const { from, to } = rangeBounds(sp, 29);
   const inRange = store.sales.filter(
-    (s) => s.createdAt >= from && s.createdAt <= to
+    (s) => s.status !== "CANCELLED" && s.createdAt >= from && s.createdAt <= to
   );
 
   const branchMap = new Map<BranchValue, { total: number; count: number }>();

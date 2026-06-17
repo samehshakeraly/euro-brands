@@ -15,6 +15,7 @@ import {
   mockListSales,
   mockGetSale,
   mockCreateSale,
+  mockCancelSale,
   mockDashboard,
   mockReports,
   mockUploadUrl,
@@ -86,6 +87,17 @@ export async function mockApi<T>(
   if (path === "/api/sales") {
     if (method === "GET") return mockListSales(sp) as T;
     if (method === "POST") return mockCreateSale(parseSaleInput(body)) as T;
+  }
+
+  // /api/sales/[id]/cancel
+  const cancelMatch = path.match(/^\/api\/sales\/([^/]+)\/cancel$/);
+  if (cancelMatch && method === "POST") {
+    const res = mockCancelSale(
+      decodeURIComponent(cancelMatch[1]),
+      String((body as { reason?: string })?.reason ?? "")
+    );
+    if (!res.ok) throw new Error(res.error);
+    return res.sale as T;
   }
 
   // /api/sales/[id]

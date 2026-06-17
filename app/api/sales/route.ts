@@ -31,6 +31,8 @@ export async function GET(req: Request) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const search = searchParams.get("search")?.trim();
+    const payment = searchParams.get("payment");
+    const status = searchParams.get("status");
     const limit = Math.min(Number(searchParams.get("limit")) || 500, 1000);
 
     const where: Prisma.SaleWhereInput = {};
@@ -42,10 +44,31 @@ export async function GET(req: Request) {
       if (to) where.createdAt.lte = new Date(to);
     }
 
+    // فلتر طريقة الدفع (مع تمييز نوع التحويل)
+    if (payment === "CASH" || payment === "VISA")
+      where.paymentMethod = payment;
+    else if (payment === "VODAFONE_CASH" || payment === "INSTAPAY") {
+      where.paymentMethod = "TRANSFER";
+      where.transferMethod = payment;
+    }
+
+    // فلتر الحالة
+    if (status === "COMPLETED") where.status = "COMPLETED";
+    else if (status === "CANCELLED") where.status = "CANCELLED";
+    else if (status === "REMAINING") {
+      where.status = "COMPLETED";
+      where.remainingAmount = { gt: 0 };
+    }
+
     if (search) {
       const or: Prisma.SaleWhereInput[] = [
         { customerName: { contains: search, mode: "insensitive" } },
         { customerPhone: { contains: search } },
+        {
+          items: {
+            some: { product: { name: { contains: search, mode: "insensitive" } } },
+          },
+        },
       ];
       const asNumber = Number(search.replace(/[#\s]/g, ""));
       if (Number.isInteger(asNumber)) or.push({ saleNumber: asNumber });

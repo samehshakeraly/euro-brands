@@ -34,7 +34,7 @@ export async function GET(req: Request) {
 
     const [sales, lowStockVariants, allProducts] = await Promise.all([
       prisma.sale.findMany({
-        where: { createdAt: { gte: from, lte: to } },
+        where: { createdAt: { gte: from, lte: to }, status: { not: "CANCELLED" } },
         include: {
           items: {
             include: {

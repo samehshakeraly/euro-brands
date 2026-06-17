@@ -43,6 +43,14 @@ export const TRANSFER_METHOD_LABELS: Record<TransferMethodValue, string> = {
   INSTAPAY: "انستا باي",
 };
 
+export const SALE_STATUSES = ["COMPLETED", "CANCELLED"] as const;
+export type SaleStatusValue = (typeof SALE_STATUSES)[number];
+
+export const SALE_STATUS_LABELS: Record<SaleStatusValue, string> = {
+  COMPLETED: "مكتملة",
+  CANCELLED: "ملغية",
+};
+
 // المقاسات المتاحة حسب الفئة
 export const CLOTHING_SIZES = [
   "XS",

@@ -71,6 +71,8 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
     invoiceNotes: s.invoiceNotes,
     paidAmount: s.paidAmount,
     remainingAmount: s.remainingAmount,
+    status: s.status as SaleDTO["status"],
+    cancellationReason: s.cancellationReason,
     createdAt: s.createdAt.toISOString(),
     items: s.items.map((it) => ({
       id: it.id,

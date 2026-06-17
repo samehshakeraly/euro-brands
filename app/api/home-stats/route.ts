@@ -15,7 +15,10 @@ export async function GET() {
     const now = new Date();
     const [today, yesterday] = await Promise.all([
       prisma.sale.aggregate({
-        where: { createdAt: { gte: startOfDay(now), lte: endOfDay(now) } },
+        where: {
+          createdAt: { gte: startOfDay(now), lte: endOfDay(now) },
+          status: { not: "CANCELLED" },
+        },
         _sum: { finalAmount: true },
         _count: true,
       }),
@@ -25,6 +28,7 @@ export async function GET() {
             gte: startOfDay(subDays(now, 1)),
             lte: endOfDay(subDays(now, 1)),
           },
+          status: { not: "CANCELLED" },
         },
         _sum: { finalAmount: true },
         _count: true,

@@ -22,7 +22,7 @@ async function gatherData(
   const from = subDays(now, 30);
   const [sales, products] = await Promise.all([
     prisma.sale.findMany({
-      where: { createdAt: { gte: from } },
+      where: { createdAt: { gte: from }, status: { not: "CANCELLED" } },
       include: {
         items: {
           include: {

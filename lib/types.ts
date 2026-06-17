@@ -4,6 +4,7 @@ import type {
   DiscountTypeValue,
   PaymentMethodValue,
   TransferMethodValue,
+  SaleStatusValue,
 } from "./constants";
 
 // الأنواع المشتركة بين الواجهة والـ API (نسخة قابلة للتسلسل JSON)
@@ -94,6 +95,8 @@ export interface SaleDTO {
   invoiceNotes: string | null;
   paidAmount: number;
   remainingAmount: number;
+  status: SaleStatusValue;
+  cancellationReason: string | null;
   createdAt: string;
   items: SaleItemDTO[];
   itemsCount?: number;

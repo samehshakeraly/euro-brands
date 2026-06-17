@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const [rangeSales, todayAgg, lowStockCount, recent] = await Promise.all([
       // كل فواتير الفترة مع عناصرها (لحساب معظم الإحصائيات)
       prisma.sale.findMany({
-        where: { createdAt: { gte: from, lte: to } },
+        where: { createdAt: { gte: from, lte: to }, status: { not: "CANCELLED" } },
         include: {
           items: {
             include: { product: { select: { name: true, category: true } } },
@@ -49,7 +49,10 @@ export async function GET(req: Request) {
       }),
       // مبيعات اليوم
       prisma.sale.aggregate({
-        where: { createdAt: { gte: todayStart, lte: todayEnd } },
+        where: {
+          createdAt: { gte: todayStart, lte: todayEnd },
+          status: { not: "CANCELLED" },
+        },
         _sum: { finalAmount: true },
         _count: true,
       }),
@@ -59,6 +62,7 @@ export async function GET(req: Request) {
       }),
       // أحدث 10 فواتير
       prisma.sale.findMany({
+        where: { status: { not: "CANCELLED" } },
         include: {
           items: {
             include: {

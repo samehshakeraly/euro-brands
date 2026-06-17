@@ -39,6 +39,11 @@ enum PaymentMethod {
   TRANSFER // تحويل
 }
 
+enum SaleStatus {
+  COMPLETED // مكتملة
+  CANCELLED // ملغية
+}
+
 // ----------------------------------------------------
 //  Models
 // ----------------------------------------------------
@@ -112,12 +117,16 @@ model Sale {
   paidAmount      Float         @default(0) // المبلغ المدفوع
   remainingAmount Float         @default(0) // المبلغ المتبقي
 
+  status             SaleStatus @default(COMPLETED)
+  cancellationReason String? // سبب الإلغاء
+
   items SaleItem[]
 
   createdAt DateTime @default(now())
 
   @@index([branch])
   @@index([createdAt])
+  @@index([status])
 }
 
 model SaleItem {
