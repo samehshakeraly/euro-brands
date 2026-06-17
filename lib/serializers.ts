@@ -73,6 +73,13 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
     remainingAmount: s.remainingAmount,
     status: s.status as SaleDTO["status"],
     cancellationReason: s.cancellationReason,
+    isDelivery: s.isDelivery,
+    orderSource: s.orderSource,
+    deliveryMethod: (s.deliveryMethod as SaleDTO["deliveryMethod"]) ?? null,
+    deliveryAddress: s.deliveryAddress,
+    addressNotes: s.addressNotes,
+    trackingNumber: s.trackingNumber,
+    deliveryStatus: (s.deliveryStatus as SaleDTO["deliveryStatus"]) ?? null,
     createdAt: s.createdAt.toISOString(),
     items: s.items.map((it) => ({
       id: it.id,

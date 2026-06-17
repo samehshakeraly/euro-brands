@@ -51,6 +51,44 @@ export const SALE_STATUS_LABELS: Record<SaleStatusValue, string> = {
   CANCELLED: "ملغية",
 };
 
+// طريقة التوصيل
+export const DELIVERY_METHODS = ["CUSTOM", "BOSTA"] as const;
+export type DeliveryMethodValue = (typeof DELIVERY_METHODS)[number];
+
+export const DELIVERY_METHOD_LABELS: Record<DeliveryMethodValue, string> = {
+  CUSTOM: "عامل خاص",
+  BOSTA: "Bosta",
+};
+
+// حالة طلب التوصيل
+export const DELIVERY_STATUSES = [
+  "NEW",
+  "PREPARING",
+  "READY",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "RETURNED",
+] as const;
+export type DeliveryStatusValue = (typeof DELIVERY_STATUSES)[number];
+
+export const DELIVERY_STATUS_LABELS: Record<DeliveryStatusValue, string> = {
+  NEW: "جديد",
+  PREPARING: "قيد التجهيز",
+  READY: "جاهز للشحن",
+  OUT_FOR_DELIVERY: "خرج للتوصيل",
+  DELIVERED: "تم التوصيل",
+  RETURNED: "مرتجع",
+};
+
+// مصادر الطلب الافتراضية (قابلة للإضافة في الواجهة)
+export const DEFAULT_ORDER_SOURCES = [
+  "تليفون",
+  "فيسبوك",
+  "انستجرام",
+  "واتساب",
+  "ماسنجر",
+] as const;
+
 // المقاسات المتاحة حسب الفئة
 export const CLOTHING_SIZES = [
   "XS",

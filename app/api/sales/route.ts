@@ -1,6 +1,7 @@
 import {
   Prisma,
   type Branch,
+  type DeliveryMethod,
   type DiscountType,
   type PaymentMethod,
 } from "@prisma/client";
@@ -185,6 +186,15 @@ export async function POST(req: Request) {
               invoiceNotes: input.invoiceNotes ?? null,
               paidAmount: round2(paidAmount),
               remainingAmount,
+              isDelivery: !!input.delivery,
+              orderSource: input.delivery?.orderSource ?? null,
+              deliveryMethod:
+                (input.delivery?.deliveryMethod as DeliveryMethod | undefined) ??
+                null,
+              deliveryAddress: input.delivery?.deliveryAddress ?? null,
+              addressNotes: input.delivery?.addressNotes ?? null,
+              trackingNumber: input.delivery?.trackingNumber ?? null,
+              deliveryStatus: input.delivery ? "NEW" : null,
               items: { create: itemsData },
             },
             include: saleInclude,

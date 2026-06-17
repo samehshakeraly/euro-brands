@@ -44,6 +44,20 @@ enum SaleStatus {
   CANCELLED // ملغية
 }
 
+enum DeliveryMethod {
+  CUSTOM // عامل خاص
+  BOSTA
+}
+
+enum DeliveryStatus {
+  NEW // جديد
+  PREPARING // قيد التجهيز
+  READY // جاهز للشحن
+  OUT_FOR_DELIVERY // خرج للتوصيل
+  DELIVERED // تم التوصيل
+  RETURNED // مرتجع
+}
+
 // ----------------------------------------------------
 //  Models
 // ----------------------------------------------------
@@ -120,6 +134,14 @@ model Sale {
   status             SaleStatus @default(COMPLETED)
   cancellationReason String? // سبب الإلغاء
 
+  isDelivery       Boolean         @default(false)
+  orderSource      String? // مصدر الطلب (تليفون/فيسبوك/...)
+  deliveryMethod   DeliveryMethod?
+  deliveryAddress  String?
+  addressNotes     String?
+  trackingNumber   String? // رقم تتبع شركة الشحن (Bosta)
+  deliveryStatus   DeliveryStatus?
+
   items SaleItem[]
 
   createdAt DateTime @default(now())
@@ -127,6 +149,8 @@ model Sale {
   @@index([branch])
   @@index([createdAt])
   @@index([status])
+  @@index([isDelivery])
+  @@index([deliveryStatus])
 }
 
 model SaleItem {

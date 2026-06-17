@@ -14,6 +14,7 @@ import {
   ScanLine,
   Save,
   Clock,
+  Truck,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -35,11 +36,15 @@ import {
 import {
   BRANCHES,
   BRANCH_LABELS,
+  DEFAULT_ORDER_SOURCES,
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
   TRANSFER_METHODS,
   TRANSFER_METHOD_LABELS,
   type BranchValue,
+  type DeliveryMethodValue,
   type DiscountTypeValue,
   type PaymentMethodValue,
   type TransferMethodValue,
@@ -73,7 +78,15 @@ interface HeldInvoice {
   transferMethod: TransferMethodValue | "";
   partialOn: boolean;
   paidInput: string;
+  deliveryOn?: boolean;
+  orderSource?: string;
+  deliveryMethod?: DeliveryMethodValue | "";
+  deliveryAddress?: string;
+  addressNotes?: string;
+  trackingNumber?: string;
 }
+
+const CUSTOM_SOURCES_KEY = "eb-custom-sources";
 
 const BRANCH_KEY = "eb-pos-branch";
 
@@ -157,6 +170,17 @@ function PosRegister({
   );
   const [partialOn, setPartialOn] = useState(false);
   const [paidInput, setPaidInput] = useState("");
+  const [deliveryOn, setDeliveryOn] = useState(false);
+  const [orderSource, setOrderSource] = useState("");
+  const [deliveryMethod, setDeliveryMethod] = useState<
+    DeliveryMethodValue | ""
+  >("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [addressNotes, setAddressNotes] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [customSources, setCustomSources] = useState<string[]>([]);
+  const [addSourceOpen, setAddSourceOpen] = useState(false);
+  const [newSourceInput, setNewSourceInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [receipt, setReceipt] = useState<SaleDTO | null>(null);
@@ -185,6 +209,31 @@ function PosRegister({
   useEffect(() => {
     localStorage.setItem(heldKey, JSON.stringify(held));
   }, [held, heldKey]);
+
+  // مصادر الطلب المخصّصة (محفوظة في localStorage)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_SOURCES_KEY);
+      setCustomSources(raw ? JSON.parse(raw) : []);
+    } catch {
+      setCustomSources([]);
+    }
+  }, []);
+  function addCustomSource(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (
+      DEFAULT_ORDER_SOURCES.includes(trimmed as never) ||
+      customSources.includes(trimmed)
+    ) {
+      setOrderSource(trimmed);
+      return;
+    }
+    const next = [...customSources, trimmed];
+    setCustomSources(next);
+    localStorage.setItem(CUSTOM_SOURCES_KEY, JSON.stringify(next));
+    setOrderSource(trimmed);
+  }
 
   const url = `/api/products?branch=${branch}${
     debounced ? `&search=${encodeURIComponent(debounced)}` : ""
@@ -260,6 +309,12 @@ function PosRegister({
     setTransferMethod("");
     setPartialOn(false);
     setPaidInput("");
+    setDeliveryOn(false);
+    setOrderSource("");
+    setDeliveryMethod("");
+    setDeliveryAddress("");
+    setAddressNotes("");
+    setTrackingNumber("");
   }
 
   // ---- الإجماليات ----
@@ -318,6 +373,12 @@ function PosRegister({
       transferMethod,
       partialOn,
       paidInput,
+      deliveryOn,
+      orderSource,
+      deliveryMethod,
+      deliveryAddress,
+      addressNotes,
+      trackingNumber,
     };
     setHeld((prev) => [inv, ...prev]);
     resetSale();
@@ -336,6 +397,12 @@ function PosRegister({
     setTransferMethod(h.transferMethod);
     setPartialOn(h.partialOn);
     setPaidInput(h.paidInput);
+    setDeliveryOn(!!h.deliveryOn);
+    setOrderSource(h.orderSource ?? "");
+    setDeliveryMethod(h.deliveryMethod ?? "");
+    setDeliveryAddress(h.deliveryAddress ?? "");
+    setAddressNotes(h.addressNotes ?? "");
+    setTrackingNumber(h.trackingNumber ?? "");
     setHeld((prev) => prev.filter((x) => x.id !== h.id));
     setHeldOpen(false);
     toast.success("تم استرجاع الفاتورة");
@@ -349,6 +416,11 @@ function PosRegister({
     if (cart.length === 0) return toast.error("الفاتورة فارغة");
     if (paymentMethod === "TRANSFER" && !transferMethod)
       return toast.error("اختر طريقة التحويل");
+    if (deliveryOn) {
+      if (!orderSource.trim()) return toast.error("اختر مصدر الطلب");
+      if (!deliveryMethod) return toast.error("اختر طريقة التوصيل");
+      if (!deliveryAddress.trim()) return toast.error("أدخل عنوان التوصيل");
+    }
     setSubmitting(true);
     try {
       const sale = await apiPost<SaleDTO>("/api/sales", {
@@ -366,6 +438,18 @@ function PosRegister({
         paymentMethod,
         transferMethod: paymentMethod === "TRANSFER" ? transferMethod : null,
         paidAmount: partialOn ? paidAmount : null,
+        delivery: deliveryOn
+          ? {
+              orderSource: orderSource.trim(),
+              deliveryMethod,
+              deliveryAddress: deliveryAddress.trim(),
+              addressNotes: addressNotes.trim() || null,
+              trackingNumber:
+                deliveryMethod === "BOSTA"
+                  ? trackingNumber.trim() || null
+                  : null,
+            }
+          : null,
       });
       setReceipt(sale);
       resetSale();
@@ -732,6 +816,120 @@ function PosRegister({
               </div>
             </div>
 
+            {/* التوصيل */}
+            <div className="mt-4">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-text">
+                <input
+                  type="checkbox"
+                  checked={deliveryOn}
+                  onChange={(e) => setDeliveryOn(e.target.checked)}
+                  className="h-4 w-4 accent-[#6c63ff]"
+                />
+                <Truck className="h-4 w-4 text-accent" />
+                توصيل
+              </label>
+              {deliveryOn && (
+                <div className="mt-2 space-y-2 rounded-lg border bg-bg p-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-muted">
+                      مصدر الطلب *
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        className="input"
+                        value={orderSource}
+                        onChange={(e) => setOrderSource(e.target.value)}
+                      >
+                        <option value="">اختر المصدر</option>
+                        {DEFAULT_ORDER_SOURCES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                        {customSources.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewSourceInput("");
+                          setAddSourceOpen(true);
+                        }}
+                        className="btn btn-secondary flex-shrink-0"
+                        title="إضافة مصدر جديد"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-muted">
+                      طريقة التوصيل *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {DELIVERY_METHODS.map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setDeliveryMethod(m)}
+                          className={cn(
+                            "rounded-lg border py-2 text-sm font-medium transition-colors",
+                            deliveryMethod === m
+                              ? "border-accent bg-accent-soft text-accent"
+                              : "text-muted hover:text-text"
+                          )}
+                        >
+                          {DELIVERY_METHOD_LABELS[m]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {deliveryMethod === "BOSTA" && (
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">
+                        رقم التتبع (Bosta)
+                      </label>
+                      <input
+                        className="input nums"
+                        placeholder="مثال: BST-1234567"
+                        value={trackingNumber}
+                        onChange={(e) => setTrackingNumber(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-1 block text-xs text-muted">
+                      عنوان التوصيل *
+                    </label>
+                    <textarea
+                      className="input min-h-[60px] resize-y"
+                      placeholder="الشارع، المنطقة، العلامات المميزة..."
+                      value={deliveryAddress}
+                      onChange={(e) => setDeliveryAddress(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-muted">
+                      ملاحظات العنوان
+                    </label>
+                    <textarea
+                      className="input min-h-[48px] resize-y"
+                      placeholder="رقم بديل، أوقات استلام مناسبة..."
+                      value={addressNotes}
+                      onChange={(e) => setAddressNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* الدفع الجزئي */}
             <div className="mt-4">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-text">
@@ -862,6 +1060,57 @@ function PosRegister({
       />
 
       <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />
+
+      {/* نافذة إضافة مصدر طلب جديد */}
+      <Modal
+        open={addSourceOpen}
+        onClose={() => setAddSourceOpen(false)}
+        size="sm"
+        title="إضافة مصدر طلب جديد"
+        footer={
+          <>
+            <button
+              className="btn btn-primary w-full sm:w-auto"
+              onClick={() => {
+                if (!newSourceInput.trim()) {
+                  toast.error("أدخل اسم المصدر");
+                  return;
+                }
+                addCustomSource(newSourceInput);
+                setAddSourceOpen(false);
+              }}
+            >
+              إضافة
+            </button>
+            <button
+              className="btn btn-secondary w-full sm:w-auto"
+              onClick={() => setAddSourceOpen(false)}
+            >
+              إلغاء
+            </button>
+          </>
+        }
+      >
+        <label className="label">اسم المصدر</label>
+        <input
+          autoFocus
+          className="input"
+          value={newSourceInput}
+          onChange={(e) => setNewSourceInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (newSourceInput.trim()) {
+                addCustomSource(newSourceInput);
+                setAddSourceOpen(false);
+              }
+            }
+          }}
+          placeholder="مثال: تيك توك، إعلان جوجل..."
+        />
+        <p className="mt-2 text-xs text-muted">
+          سيُحفظ ويظهر في القائمة في المرات القادمة (في هذا المتصفح).
+        </p>
+      </Modal>
 
       {/* الفواتير المعلّقة */}
       <Modal

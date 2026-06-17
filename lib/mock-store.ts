@@ -12,6 +12,8 @@ import {
   LOW_STOCK_THRESHOLD,
   type BranchValue,
   type CategoryValue,
+  type DeliveryMethodValue,
+  type DeliveryStatusValue,
   type DiscountTypeValue,
   type PaymentMethodValue,
   type TransferMethodValue,
@@ -91,6 +93,13 @@ interface MSale {
   remainingAmount: number;
   status: SaleStatusValue;
   cancellationReason: string | null;
+  isDelivery: boolean;
+  orderSource: string | null;
+  deliveryMethod: DeliveryMethodValue | null;
+  deliveryAddress: string | null;
+  addressNotes: string | null;
+  trackingNumber: string | null;
+  deliveryStatus: DeliveryStatusValue | null;
   createdAt: Date;
   items: MItem[];
 }
@@ -398,6 +407,41 @@ function buildStore(): Store {
     const partial = rng() < 0.15;
     const paidAmount = partial ? round2(finalAmount * 0.6) : finalAmount;
 
+    // ~25% منها طلبات توصيل بحالات متفاوتة
+    const isDelivery = rng() < 0.25;
+    const sources = ["تليفون", "فيسبوك", "انستجرام", "واتساب", "ماسنجر"];
+    const addresses = [
+      "شارع 9، حدائق المعادي",
+      "شارع 200، زهراء المعادي",
+      "كورنيش المعادي، أمام نادي الصيد",
+      "ميدان الحرية، المعادي الجديدة",
+    ];
+    const statuses: DeliveryStatusValue[] = [
+      "NEW",
+      "PREPARING",
+      "READY",
+      "OUT_FOR_DELIVERY",
+      "DELIVERED",
+      "DELIVERED",
+      "DELIVERED",
+      "RETURNED",
+    ];
+
+    let orderSource: string | null = null;
+    let deliveryMethod: DeliveryMethodValue | null = null;
+    let deliveryAddress: string | null = null;
+    let trackingNumber: string | null = null;
+    let deliveryStatus: DeliveryStatusValue | null = null;
+
+    if (isDelivery) {
+      orderSource = sources[Math.floor(rng() * sources.length)];
+      deliveryMethod = rng() < 0.5 ? "CUSTOM" : "BOSTA";
+      deliveryAddress = addresses[Math.floor(rng() * addresses.length)];
+      if (deliveryMethod === "BOSTA")
+        trackingNumber = `BST-${Math.floor(rng() * 9000000 + 1000000)}`;
+      deliveryStatus = statuses[Math.floor(rng() * statuses.length)];
+    }
+
     store.sales.push({
       id: saleId,
       saleNumber: store.sales.length + 1,
@@ -416,6 +460,13 @@ function buildStore(): Store {
       remainingAmount: round2(finalAmount - paidAmount),
       status: "COMPLETED",
       cancellationReason: null,
+      isDelivery,
+      orderSource,
+      deliveryMethod,
+      deliveryAddress,
+      addressNotes: null,
+      trackingNumber,
+      deliveryStatus,
       createdAt: created,
       items,
     });
@@ -526,6 +577,13 @@ function shapeSale(s: MSale): SaleDTO {
     remainingAmount: s.remainingAmount,
     status: s.status,
     cancellationReason: s.cancellationReason,
+    isDelivery: s.isDelivery,
+    orderSource: s.orderSource,
+    deliveryMethod: s.deliveryMethod,
+    deliveryAddress: s.deliveryAddress,
+    addressNotes: s.addressNotes,
+    trackingNumber: s.trackingNumber,
+    deliveryStatus: s.deliveryStatus,
     createdAt: s.createdAt.toISOString(),
     items: s.items.map((it) => {
       const ref = findVariant(it.variantId);
@@ -1007,11 +1065,73 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
     remainingAmount: round2(finalAmount - paidAmount),
     status: "COMPLETED",
     cancellationReason: null,
+    isDelivery: !!input.delivery,
+    orderSource: input.delivery?.orderSource ?? null,
+    deliveryMethod: input.delivery?.deliveryMethod ?? null,
+    deliveryAddress: input.delivery?.deliveryAddress ?? null,
+    addressNotes: input.delivery?.addressNotes ?? null,
+    trackingNumber: input.delivery?.trackingNumber ?? null,
+    deliveryStatus: input.delivery ? "NEW" : null,
     createdAt: new Date(),
     items,
   };
   store.sales.push(sale);
   return shapeSale(sale);
+}
+
+// قائمة طلبات التوصيل (للفلاتر)
+export function mockListDelivery(sp: URLSearchParams): SaleDTO[] {
+  const branch = sp.get("branch") as BranchValue | null;
+  const status = sp.get("status") as DeliveryStatusValue | null;
+  const method = sp.get("method") as DeliveryMethodValue | null;
+  const source = sp.get("source");
+  const from = sp.get("from") ? new Date(sp.get("from")!) : null;
+  const to = sp.get("to") ? new Date(sp.get("to")!) : null;
+
+  let list = store.sales.filter((s) => s.isDelivery);
+  if (branch) list = list.filter((s) => s.branch === branch);
+  if (status) list = list.filter((s) => s.deliveryStatus === status);
+  if (method) list = list.filter((s) => s.deliveryMethod === method);
+  if (source) list = list.filter((s) => s.orderSource === source);
+  if (from) list = list.filter((s) => s.createdAt >= from);
+  if (to) list = list.filter((s) => s.createdAt <= to);
+
+  return list
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map(shapeSale);
+}
+
+// تحديث حالة التوصيل — مع إعادة الكميات للمخزون عند «مرتجع»
+export function mockUpdateDeliveryStatus(
+  id: string,
+  status: DeliveryStatusValue
+): { ok: true; sale: SaleDTO } | { ok: false; status: number; error: string } {
+  const sale = store.sales.find((s) => s.id === id);
+  if (!sale) return { ok: false, status: 404, error: "الطلب غير موجود" };
+  if (!sale.isDelivery)
+    return { ok: false, status: 422, error: "هذه ليست فاتورة توصيل" };
+  if (sale.deliveryStatus === status) {
+    return { ok: true, sale: shapeSale(sale) };
+  }
+
+  // إذا انتقلنا إلى «مرتجع» من حالة غير مرتجعة، أعد الكميات للمخزون
+  const wasReturned = sale.deliveryStatus === "RETURNED";
+  if (status === "RETURNED" && !wasReturned) {
+    for (const it of sale.items) {
+      const ref = findVariant(it.variantId);
+      if (ref) ref.variant.quantity += it.quantity;
+    }
+  } else if (wasReturned && status !== "RETURNED") {
+    // إذا تراجعت عن «مرتجع» إلى حالة أخرى، اخصم الكميات مجدداً
+    for (const it of sale.items) {
+      const ref = findVariant(it.variantId);
+      if (ref)
+        ref.variant.quantity = Math.max(0, ref.variant.quantity - it.quantity);
+    }
+  }
+
+  sale.deliveryStatus = status;
+  return { ok: true, sale: shapeSale(sale) };
 }
 
 // إلغاء فاتورة وإعادة الكميات للمخزون

@@ -181,6 +181,25 @@ export function ReceiptModal({
           )}
         </div>
 
+        {sale.isDelivery && (
+          <div className="mt-3 rounded-lg border bg-accent-soft p-3 text-sm">
+            <p className="mb-1 font-bold text-accent">📦 طلب توصيل</p>
+            {sale.orderSource && (
+              <p className="text-xs text-muted">المصدر: {sale.orderSource}</p>
+            )}
+            {sale.deliveryAddress && (
+              <p className="text-xs text-text">
+                العنوان: {sale.deliveryAddress}
+              </p>
+            )}
+            {sale.trackingNumber && (
+              <p className="text-xs text-muted nums">
+                Bosta: {sale.trackingNumber}
+              </p>
+            )}
+          </div>
+        )}
+
         <p className="mt-4 text-center text-xs text-muted">
           شكراً لتسوقكم من Euro Brands
         </p>

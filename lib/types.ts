@@ -1,6 +1,8 @@
 import type {
   BranchValue,
   CategoryValue,
+  DeliveryMethodValue,
+  DeliveryStatusValue,
   DiscountTypeValue,
   PaymentMethodValue,
   TransferMethodValue,
@@ -97,9 +99,24 @@ export interface SaleDTO {
   remainingAmount: number;
   status: SaleStatusValue;
   cancellationReason: string | null;
+  isDelivery: boolean;
+  orderSource: string | null;
+  deliveryMethod: DeliveryMethodValue | null;
+  deliveryAddress: string | null;
+  addressNotes: string | null;
+  trackingNumber: string | null;
+  deliveryStatus: DeliveryStatusValue | null;
   createdAt: string;
   items: SaleItemDTO[];
   itemsCount?: number;
+}
+
+export interface DeliveryInput {
+  orderSource: string;
+  deliveryMethod: DeliveryMethodValue;
+  deliveryAddress: string;
+  addressNotes?: string | null;
+  trackingNumber?: string | null;
 }
 
 // مدخلات إنشاء/تعديل المنتج
@@ -159,6 +176,7 @@ export interface SaleInput {
   transferMethod?: TransferMethodValue | null;
   invoiceNotes?: string | null;
   paidAmount?: number | null; // المبلغ المدفوع الآن (للدفع الجزئي)
+  delivery?: DeliveryInput | null; // بيانات التوصيل (اختيارية)
 }
 
 // إحصائيات لوحة التحكم

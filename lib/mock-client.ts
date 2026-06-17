@@ -16,12 +16,15 @@ import {
   mockGetSale,
   mockCreateSale,
   mockCancelSale,
+  mockListDelivery,
+  mockUpdateDeliveryStatus,
   mockDashboard,
   mockReports,
   mockUploadUrl,
 } from "./mock-store";
 import {
   parseBrandInput,
+  parseDeliveryStatus,
   parseImportRows,
   parseProductInput,
   parseSaleInput,
@@ -95,6 +98,22 @@ export async function mockApi<T>(
     const res = mockCancelSale(
       decodeURIComponent(cancelMatch[1]),
       String((body as { reason?: string })?.reason ?? "")
+    );
+    if (!res.ok) throw new Error(res.error);
+    return res.sale as T;
+  }
+
+  // /api/delivery
+  if (path === "/api/delivery" && method === "GET")
+    return mockListDelivery(sp) as T;
+
+  // /api/delivery/[id]/status
+  const statusMatch = path.match(/^\/api\/delivery\/([^/]+)\/status$/);
+  if (statusMatch && method === "POST") {
+    const status = parseDeliveryStatus(body);
+    const res = mockUpdateDeliveryStatus(
+      decodeURIComponent(statusMatch[1]),
+      status
     );
     if (!res.ok) throw new Error(res.error);
     return res.sale as T;

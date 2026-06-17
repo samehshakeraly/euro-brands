@@ -1,16 +1,21 @@
 import {
   BRANCHES,
   CATEGORIES,
+  DELIVERY_METHODS,
+  DELIVERY_STATUSES,
   DISCOUNT_TYPES,
   PAYMENT_METHODS,
   TRANSFER_METHODS,
   type BranchValue,
   type CategoryValue,
+  type DeliveryMethodValue,
+  type DeliveryStatusValue,
   type PaymentMethodValue,
   type TransferMethodValue,
 } from "./constants";
 import type {
   BrandInput,
+  DeliveryInput,
   ImportRow,
   ProductInput,
   SaleInput,
@@ -192,6 +197,12 @@ export function parseSaleInput(body: any): SaleInput {
     paidAmount = pa;
   }
 
+  // التوصيل (اختياري)
+  let delivery: DeliveryInput | null = null;
+  if (body?.delivery && typeof body.delivery === "object") {
+    delivery = parseDeliveryInput(body.delivery);
+  }
+
   return {
     branch: branch as BranchValue,
     items,
@@ -204,5 +215,33 @@ export function parseSaleInput(body: any): SaleInput {
     transferMethod,
     invoiceNotes: asString(body?.invoiceNotes) || null,
     paidAmount,
+    delivery,
   };
+}
+
+// التحقق من بيانات التوصيل
+export function parseDeliveryInput(body: any): DeliveryInput {
+  const orderSource = asString(body?.orderSource);
+  const deliveryMethod = asString(body?.deliveryMethod);
+  const deliveryAddress = asString(body?.deliveryAddress);
+  if (!orderSource) throw new ValidationError("مصدر الطلب مطلوب");
+  if (!DELIVERY_METHODS.includes(deliveryMethod as DeliveryMethodValue))
+    throw new ValidationError("طريقة التوصيل غير صحيحة");
+  if (!deliveryAddress) throw new ValidationError("عنوان التوصيل مطلوب");
+
+  return {
+    orderSource: orderSource.slice(0, 50),
+    deliveryMethod: deliveryMethod as DeliveryMethodValue,
+    deliveryAddress,
+    addressNotes: asString(body?.addressNotes) || null,
+    trackingNumber: asString(body?.trackingNumber) || null,
+  };
+}
+
+// التحقق من حالة التوصيل
+export function parseDeliveryStatus(body: any): DeliveryStatusValue {
+  const status = asString(body?.status);
+  if (!DELIVERY_STATUSES.includes(status as DeliveryStatusValue))
+    throw new ValidationError("الحالة غير صحيحة");
+  return status as DeliveryStatusValue;
 }

@@ -11,6 +11,7 @@ import {
   BarChart3,
   ReceiptText,
   Sparkles,
+  Truck,
   Menu,
   X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/pos", label: "الفاتورة", icon: ShoppingCart },
   { href: "/reports", label: "التقارير", icon: BarChart3 },
   { href: "/insights", label: "الذكاء", icon: Sparkles },
+  { href: "/delivery", label: "الطلبات", icon: Truck },
   { href: "/sales", label: "سجل الفواتير", icon: ReceiptText },
 ];
 
