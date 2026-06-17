@@ -121,7 +121,7 @@ function PosRegister({
   const url = `/api/products?branch=${branch}${
     debounced ? `&search=${encodeURIComponent(debounced)}` : ""
   }`;
-  const { data, loading, refetch } = useFetch<ProductDTO[]>(url);
+  const { data, loading, error, refetch } = useFetch<ProductDTO[]>(url);
   const results = data ?? [];
 
   // ---- عمليات السلة ----
@@ -276,11 +276,26 @@ function PosRegister({
 
             {loading ? (
               <PageLoader label="جاري البحث..." />
+            ) : error ? (
+              <div className="rounded-lg border border-danger/40 bg-[rgba(217,83,79,0.08)] p-4 text-sm text-danger">
+                <p className="font-bold">تعذّر تحميل المنتجات</p>
+                <p className="mt-1 break-words">{error}</p>
+                <button
+                  onClick={refetch}
+                  className="btn btn-secondary mt-3 h-9 text-xs"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
             ) : results.length === 0 ? (
               <EmptyState
                 icon={<Package className="h-7 w-7" />}
                 title="لا توجد منتجات"
-                description="لا توجد منتجات مطابقة في هذا الفرع."
+                description={
+                  debounced
+                    ? `لا توجد منتجات مطابقة لـ "${debounced}" في هذا الفرع.`
+                    : "لا توجد منتجات في هذا الفرع بعد."
+                }
               />
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
