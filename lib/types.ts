@@ -170,6 +170,55 @@ export interface InsightsResponse {
   generatedAt: string;
 }
 
+// صفحة الذكاء المتقدمة
+export interface InsightsData {
+  generatedAt: string;
+  aiSource: "ai" | "rules";
+  alerts: {
+    lowStock: {
+      id: string;
+      productId: string;
+      productName: string;
+      brand: string;
+      branch: BranchValue;
+      size: string;
+      quantity: number;
+      minQuantity: number;
+    }[];
+    deadStock: {
+      id: string;
+      name: string;
+      brand: string;
+      quantity: number;
+    }[];
+    branchDrops: {
+      branch: BranchValue;
+      thisWeek: number;
+      lastWeek: number;
+      dropPct: number;
+    }[];
+  };
+  performance: {
+    topGrowth: {
+      productId: string;
+      name: string;
+      brand: string;
+      thisWeekQty: number;
+      lastWeekQty: number;
+      growthPct: number;
+    }[];
+    bestBranch: { branch: BranchValue; total: number; share: number } | null;
+    peakDays: { day: number; label: string; total: number }[];
+    peakHours: { hour: number; total: number }[];
+  };
+  ai: {
+    promotions: { product: string; reason: string }[];
+    adIdeas: string[];
+    seasonal: string;
+    pricing: { product: string; suggestion: string }[];
+  };
+}
+
 // بيانات صفحة التقارير
 export interface ReportsData {
   totalSales: number; // الصافي بعد الخصم

@@ -1,271 +1,89 @@
-import { startOfDay, endOfDay, subDays } from "date-fns";
+import { subDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { ok, handleServerError } from "@/lib/api";
-import { MOCK_MODE, mockReports, mockListProducts } from "@/lib/mock-store";
+import { MOCK_MODE, mockNormalizedData } from "@/lib/mock-store";
 import {
-  BRANCHES,
-  BRANCH_LABELS,
-  CATEGORY_LABELS,
-  LOW_STOCK_THRESHOLD,
-  type BranchValue,
-  type CategoryValue,
-} from "@/lib/constants";
-import { formatCurrency, formatNumber } from "@/lib/format";
-import type { Insight, ReportsData } from "@/lib/types";
+  computeInsights,
+  fallbackAi,
+  type AiContext,
+  type NormProduct,
+  type NormSale,
+} from "@/lib/insights-analytics";
+import type { BranchValue, CategoryValue } from "@/lib/constants";
+import type { InsightsData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-interface Ctx {
-  totalSales: number;
-  invoicesCount: number;
-  itemsSold: number;
-  avgInvoice: number;
-  byBranch: { branchLabel: string; total: number; count: number }[];
-  byCategory: { categoryLabel: string; total: number; qty: number }[];
-  topProducts: { name: string; brand: string; qty: number; revenue: number }[];
-  lowStock: { name: string; branchLabel: string; size: string; quantity: number }[];
-  outOfStockCount: number;
-  lowStockCount: number;
-  totalProducts: number;
-  totalUnits: number;
-}
+async function gatherData(
+  now: Date
+): Promise<{ sales: NormSale[]; products: NormProduct[] }> {
+  if (MOCK_MODE) return mockNormalizedData();
 
-function assemble(
-  rep: Pick<
-    ReportsData,
-    | "totalSales"
-    | "invoicesCount"
-    | "itemsSold"
-    | "avgInvoice"
-    | "byBranch"
-    | "byCategory"
-    | "topProducts"
-    | "lowStock"
-  >,
-  products: { variants: { quantity: number }[] }[]
-): Ctx {
-  const outOfStockCount = products.reduce(
-    (n, p) => n + p.variants.filter((v) => v.quantity === 0).length,
-    0
-  );
-  const totalUnits = products.reduce(
-    (n, p) => n + p.variants.reduce((s, v) => s + v.quantity, 0),
-    0
-  );
-  return {
-    totalSales: rep.totalSales,
-    invoicesCount: rep.invoicesCount,
-    itemsSold: rep.itemsSold,
-    avgInvoice: rep.avgInvoice,
-    byBranch: rep.byBranch.map((b) => ({
-      branchLabel: BRANCH_LABELS[b.branch],
-      total: b.total,
-      count: b.count,
-    })),
-    byCategory: rep.byCategory.map((c) => ({
-      categoryLabel: CATEGORY_LABELS[c.category],
-      total: c.total,
-      qty: c.qty,
-    })),
-    topProducts: rep.topProducts.slice(0, 5),
-    lowStock: rep.lowStock.slice(0, 15).map((v) => ({
-      name: v.productName,
-      branchLabel: BRANCH_LABELS[v.branch],
-      size: v.size,
-      quantity: v.quantity,
-    })),
-    outOfStockCount,
-    lowStockCount: rep.lowStock.length,
-    totalProducts: products.length,
-    totalUnits,
-  };
-}
-
-async function buildContext(): Promise<Ctx> {
-  const now = new Date();
-  const from = subDays(startOfDay(now), 29);
-  const to = endOfDay(now);
-
-  if (MOCK_MODE) {
-    const sp = new URLSearchParams({
-      from: from.toISOString(),
-      to: to.toISOString(),
-    });
-    return assemble(mockReports(sp), mockListProducts(new URLSearchParams()));
-  }
-
-  // الوضع الحقيقي: تجميع من قاعدة البيانات
+  const from = subDays(now, 30);
   const [sales, products] = await Promise.all([
     prisma.sale.findMany({
-      where: { createdAt: { gte: from, lte: to } },
+      where: { createdAt: { gte: from } },
       include: {
         items: {
-          include: { product: { select: { name: true, category: true } } },
+          include: {
+            product: { select: { name: true, brand: true, category: true } },
+          },
         },
       },
     }),
     prisma.product.findMany({ include: { variants: true } }),
   ]);
 
-  const branchMap = new Map<BranchValue, { total: number; count: number }>();
-  for (const b of BRANCHES) branchMap.set(b, { total: 0, count: 0 });
-  const catMap = new Map<CategoryValue, { total: number; qty: number }>();
-  const prodMap = new Map<
-    string,
-    { name: string; brand: string; qty: number; revenue: number }
-  >();
-  let totalSales = 0;
-  let itemsSold = 0;
-
-  for (const sale of sales) {
-    totalSales += sale.finalAmount;
-    const b = branchMap.get(sale.branch as BranchValue)!;
-    b.total += sale.finalAmount;
-    b.count += 1;
-    for (const it of sale.items) {
-      itemsSold += it.quantity;
-      const cat = it.product.category as CategoryValue;
-      const c = catMap.get(cat) ?? { total: 0, qty: 0 };
-      c.total += it.subtotal;
-      c.qty += it.quantity;
-      catMap.set(cat, c);
-      const p = prodMap.get(it.productId) ?? {
-        name: it.product.name,
-        brand: "",
-        qty: 0,
-        revenue: 0,
-      };
-      p.qty += it.quantity;
-      p.revenue += it.subtotal;
-      prodMap.set(it.productId, p);
-    }
-  }
-
-  const lowStock = products
-    .flatMap((p) =>
-      p.variants
-        .filter((v) => v.quantity <= LOW_STOCK_THRESHOLD)
-        .map((v) => ({
-          productName: p.name,
-          brand: p.brand,
-          branch: v.branch as BranchValue,
-          size: v.size,
-          quantity: v.quantity,
-        }))
-    )
-    .sort((a, b) => a.quantity - b.quantity);
-
-  const rep = {
-    totalSales,
-    invoicesCount: sales.length,
-    itemsSold,
-    avgInvoice: sales.length ? totalSales / sales.length : 0,
-    byBranch: [...branchMap.entries()].map(([branch, v]) => ({
-      branch,
-      total: v.total,
-      count: v.count,
+  const normSales: NormSale[] = sales.map((s) => ({
+    branch: s.branch as BranchValue,
+    finalAmount: s.finalAmount,
+    totalAmount: s.totalAmount,
+    createdAt: s.createdAt,
+    items: s.items.map((it) => ({
+      productId: it.productId,
+      name: it.product.name,
+      brand: it.product.brand,
+      category: it.product.category as CategoryValue,
+      quantity: it.quantity,
+      subtotal: it.subtotal,
     })),
-    byCategory: [...catMap.entries()].map(([category, v]) => ({
-      category,
-      total: v.total,
-      qty: v.qty,
+  }));
+  const normProducts: NormProduct[] = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    brand: p.brand,
+    category: p.category as CategoryValue,
+    totalQuantity: p.variants.reduce((s, v) => s + v.quantity, 0),
+    variants: p.variants.map((v) => ({
+      quantity: v.quantity,
+      minQuantity: v.minQuantity,
+      branch: v.branch as BranchValue,
+      size: v.size,
     })),
-    topProducts: [...prodMap.values()].sort((a, b) => b.qty - a.qty).slice(0, 10),
-    lowStock,
-  };
-
-  return assemble(rep as any, products);
+  }));
+  return { sales: normSales, products: normProducts };
 }
 
-// ---- التحليلات المبنية على القواعد (احتياطي) ----
-function ruleBasedInsights(ctx: Ctx): Insight[] {
-  const out: Insight[] = [];
-
-  if (ctx.totalSales === 0) {
-    out.push({
-      type: "warning",
-      category: "المبيعات",
-      title: "لا توجد مبيعات في آخر 30 يوماً",
-      description: "لم تُسجَّل أي فاتورة خلال الفترة. تأكد من تشغيل نقطة البيع وتسجيل العمليات.",
-    });
-  } else {
-    out.push({
-      type: "success",
-      category: "المبيعات",
-      title: "ملخّص أداء آخر 30 يوماً",
-      description: `إجمالي المبيعات ${formatCurrency(ctx.totalSales)} من ${formatNumber(ctx.invoicesCount)} فاتورة، بمتوسط ${formatCurrency(ctx.avgInvoice)} للفاتورة.`,
-    });
-  }
-
-  if (ctx.outOfStockCount > 0) {
-    out.push({
-      type: "danger",
-      category: "المخزون",
-      title: "أصناف نفدت من المخزون",
-      description: `يوجد ${formatNumber(ctx.outOfStockCount)} مقاس نفدت كميته بالكامل. أعد تزويدها لتفادي خسارة مبيعات.`,
-    });
-  }
-  if (ctx.lowStockCount > 0) {
-    out.push({
-      type: "warning",
-      category: "المخزون",
-      title: "أصناف قاربت على النفاد",
-      description: `${formatNumber(ctx.lowStockCount)} صنف وصل إلى حد التنبيه (${LOW_STOCK_THRESHOLD} أو أقل). خطّط لإعادة الطلب قريباً.`,
-    });
-  }
-
-  if (ctx.topProducts[0] && ctx.topProducts[0].qty > 0) {
-    const tp = ctx.topProducts[0];
-    out.push({
-      type: "success",
-      category: "المنتجات",
-      title: `الأكثر مبيعاً: ${tp.name}`,
-      description: `تم بيع ${formatNumber(tp.qty)} قطعة بإيراد ${formatCurrency(tp.revenue)}. حافظ على توفّره باستمرار.`,
-    });
-  }
-
-  const branches = [...ctx.byBranch].sort((a, b) => b.total - a.total);
-  if (branches.length && branches[0].total > 0) {
-    out.push({
-      type: "success",
-      category: "الفروع",
-      title: `الفرع الأعلى أداءً: ${branches[0].branchLabel}`,
-      description: `حقّق ${formatCurrency(branches[0].total)} من ${formatNumber(branches[0].count)} فاتورة. قارن بأداء بقية الفروع لتحسين التوزيع.`,
-    });
-  }
-
-  const cats = [...ctx.byCategory].sort((a, b) => b.total - a.total);
-  if (cats.length && cats[0].total > 0) {
-    out.push({
-      type: "success",
-      category: "الفئات",
-      title: `الفئة الأعلى مبيعاً: ${cats[0].categoryLabel}`,
-      description: `ساهمت بإيراد ${formatCurrency(cats[0].total)}. ركّز على تنويع معروضاتها.`,
-    });
-  }
-
-  return out;
-}
-
-// ---- استدعاء Gemini ----
-async function geminiInsights(ctx: Ctx): Promise<Insight[]> {
+// ---- Gemini: نصائح ذكية ----
+async function geminiAi(ctx: AiContext): Promise<InsightsData["ai"] | null> {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) return [];
+  if (!key) return null;
+  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
-  const prompt = `أنت محلل بيانات خبير لمتجر تجزئة للملابس والأحذية والعطور في مصر اسمه "Euro Brands" بفرعين.
-حلّل بيانات آخر 30 يوماً ومستويات المخزون الحالية التالية، وقدّم رؤى عملية ومحددة باللغة العربية تساعد الإدارة على اتخاذ قرارات.
-أعد فقط مصفوفة JSON (دون أي نص إضافي) من 4 إلى 6 عناصر، كل عنصر بالحقول:
-- "title": عنوان قصير
-- "description": شرح عملي بجملة أو جملتين
-- "type": واحدة من "success" أو "warning" أو "danger"
-- "category": فئة قصيرة مثل: المبيعات، المخزون، المنتجات، الفروع
+  const prompt = `أنت مستشار تجزئة خبير لمتجر ملابس وأحذية وعطور في مصر اسمه "Euro Brands".
+حلّل بيانات آخر 30 يوماً (الشهر ${ctx.month}) وأعطِ توصيات عملية بالعربية.
+أعد فقط كائن JSON بالشكل التالي دون أي نص إضافي:
+{
+  "promotions": [{"product": "اسم المنتج", "reason": "سبب مقنع"}],  // 3 منتجات تحتاج عروضاً الآن
+  "adIdeas": ["فكرة إعلانية مبتكرة", "فكرة أخرى"],                    // فكرتان مبنيتان على المخزون والاتجاهات
+  "seasonal": "فرصة موسمية قادمة (مثل رمضان، العودة للمدارس، كأس العالم) واقتراح للاستفادة منها",
+  "pricing": [{"product": "اسم منتج راكد", "suggestion": "اقتراح تسعير"}]  // للمنتجات بطيئة الحركة
+}
 البيانات:
 ${JSON.stringify(ctx)}`;
 
-  // gemini-1.5-flash تم إيقافه؛ نستخدم نموذج Flash حديثاً (قابل للتهيئة)
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), 18000);
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
@@ -276,71 +94,96 @@ ${JSON.stringify(ctx)}`;
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.6,
+            temperature: 0.7,
             responseMimeType: "application/json",
           },
         }),
       }
     );
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const json = await res.json();
     const text: string | undefined =
       json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return parseInsights(text);
+    return parseAi(text);
   } catch {
-    return [];
+    return null;
   } finally {
     clearTimeout(timer);
   }
 }
 
-function parseInsights(text?: string): Insight[] {
-  if (!text) return [];
+function parseAi(text?: string): InsightsData["ai"] | null {
+  if (!text) return null;
   let t = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  let arr: unknown;
+  let obj: any;
   try {
-    arr = JSON.parse(t);
+    obj = JSON.parse(t);
   } catch {
-    const m = t.match(/\[[\s\S]*\]/);
-    if (m) {
-      try {
-        arr = JSON.parse(m[0]);
-      } catch {
-        return [];
-      }
+    const m = t.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    try {
+      obj = JSON.parse(m[0]);
+    } catch {
+      return null;
     }
   }
-  if (!Array.isArray(arr)) return [];
-  const types = new Set(["success", "warning", "danger"]);
-  return arr
-    .filter(
-      (x): x is Record<string, unknown> =>
-        !!x &&
-        typeof x === "object" &&
-        typeof (x as any).title === "string" &&
-        typeof (x as any).description === "string"
-    )
-    .map((x) => ({
-      title: String(x.title).slice(0, 140),
-      description: String(x.description).slice(0, 400),
-      type: (types.has(x.type as string) ? x.type : "success") as Insight["type"],
-      category:
-        typeof x.category === "string" ? String(x.category).slice(0, 40) : "عام",
-    }))
-    .slice(0, 8);
+  if (!obj || typeof obj !== "object") return null;
+
+  const strArr = (a: unknown): string[] =>
+    Array.isArray(a)
+      ? a.filter((x) => typeof x === "string").map((x) => x.slice(0, 300)).slice(0, 4)
+      : [];
+  const pairArr = (a: unknown, k1: string, k2: string) =>
+    Array.isArray(a)
+      ? a
+          .filter((x) => x && typeof x === "object")
+          .map((x: any) => ({
+            [k1]: String(x[k1] ?? x.product ?? "").slice(0, 120),
+            [k2]: String(x[k2] ?? "").slice(0, 300),
+          }))
+          .filter((x: any) => x[k1])
+          .slice(0, 5)
+      : [];
+
+  const promotions = pairArr(obj.promotions, "product", "reason") as {
+    product: string;
+    reason: string;
+  }[];
+  const pricing = pairArr(obj.pricing, "product", "suggestion") as {
+    product: string;
+    suggestion: string;
+  }[];
+  const adIdeas = strArr(obj.adIdeas);
+  const seasonal =
+    typeof obj.seasonal === "string" ? obj.seasonal.slice(0, 400) : "";
+
+  if (!promotions.length && !adIdeas.length && !seasonal && !pricing.length)
+    return null;
+  return { promotions, adIdeas, seasonal, pricing };
 }
 
-// GET /api/insights — رؤى ذكية (Gemini مع احتياطي القواعد)
+// GET /api/insights — صفحة الذكاء المتقدمة
 export async function GET() {
   try {
-    const ctx = await buildContext();
-    const ai = await geminiInsights(ctx);
-    const insights = ai.length > 0 ? ai : ruleBasedInsights(ctx);
-    return ok({
-      insights,
-      source: ai.length > 0 ? "ai" : "rules",
-      generatedAt: new Date().toISOString(),
-    });
+    const now = new Date();
+    const { sales, products } = await gatherData(now);
+    const { alerts, performance, aiContext } = computeInsights(
+      sales,
+      products,
+      now
+    );
+
+    const aiResult = await geminiAi(aiContext);
+    const ai = aiResult ?? fallbackAi(aiContext);
+
+    const result: InsightsData = {
+      generatedAt: now.toISOString(),
+      aiSource: aiResult ? "ai" : "rules",
+      alerts,
+      performance,
+      ai,
+    };
+    return ok(result);
   } catch (error) {
     return handleServerError(error);
   }

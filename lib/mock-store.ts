@@ -15,6 +15,7 @@ import {
   type DiscountTypeValue,
 } from "./constants";
 import { ValidationError } from "./validate";
+import type { NormProduct, NormSale } from "./insights-analytics";
 import type {
   BrandDTO,
   DashboardStats,
@@ -574,6 +575,44 @@ export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
 export function mockGetProduct(id: string): ProductDTO | null {
   const p = store.products.find((x) => x.id === id);
   return p ? shapeProduct(p) : null;
+}
+
+// بيانات موحّدة لصفحة الذكاء (وضع المعاينة)
+export function mockNormalizedData(): {
+  sales: NormSale[];
+  products: NormProduct[];
+} {
+  const products: NormProduct[] = store.products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    brand: p.brand,
+    category: p.category,
+    totalQuantity: p.variants.reduce((s, v) => s + v.quantity, 0),
+    variants: p.variants.map((v) => ({
+      quantity: v.quantity,
+      minQuantity: v.minQuantity,
+      branch: v.branch,
+      size: v.size,
+    })),
+  }));
+  const sales: NormSale[] = store.sales.map((s) => ({
+    branch: s.branch,
+    finalAmount: s.finalAmount,
+    totalAmount: s.totalAmount,
+    createdAt: s.createdAt,
+    items: s.items.map((it) => {
+      const ref = findVariant(it.variantId);
+      return {
+        productId: it.productId,
+        name: ref?.product.name ?? "—",
+        brand: ref?.product.brand ?? "",
+        category: ref?.product.category ?? "CLOTHES",
+        quantity: it.quantity,
+        subtotal: it.subtotal,
+      };
+    }),
+  }));
+  return { sales, products };
 }
 
 export function mockLowStock(): LowStockResponse {
