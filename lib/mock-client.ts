@@ -9,6 +9,7 @@ import {
   mockDeleteProduct,
   mockImportInventory,
   mockLowStock,
+  mockHomeStats,
   mockListBrands,
   mockCreateBrand,
   mockListSales,
@@ -97,6 +98,9 @@ export async function mockApi<T>(
 
   // /api/low-stock
   if (path === "/api/low-stock") return mockLowStock() as T;
+
+  // /api/home-stats
+  if (path === "/api/home-stats") return mockHomeStats() as T;
 
   // /api/dashboard
   if (path === "/api/dashboard") return mockDashboard(sp) as T;

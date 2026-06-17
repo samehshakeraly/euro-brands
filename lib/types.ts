@@ -61,6 +61,11 @@ export interface LowStockResponse {
   items: LowStockItem[];
 }
 
+export interface HomeStats {
+  today: { sales: number; count: number };
+  yesterday: { sales: number; count: number };
+}
+
 export interface SaleItemDTO {
   id: string;
   productId: string;

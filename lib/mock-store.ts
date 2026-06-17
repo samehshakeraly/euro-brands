@@ -644,6 +644,27 @@ export function mockNormalizedData(): {
   return { sales, products };
 }
 
+export function mockHomeStats(): {
+  today: { sales: number; count: number };
+  yesterday: { sales: number; count: number };
+} {
+  const now = new Date();
+  const agg = (from: Date, to: Date) => {
+    let sales = 0;
+    let count = 0;
+    for (const s of store.sales)
+      if (s.createdAt >= from && s.createdAt <= to) {
+        sales += s.finalAmount;
+        count++;
+      }
+    return { sales: round2(sales), count };
+  };
+  return {
+    today: agg(startOfDay(now), endOfDay(now)),
+    yesterday: agg(startOfDay(subDays(now, 1)), endOfDay(subDays(now, 1))),
+  };
+}
+
 export function mockLowStock(): LowStockResponse {
   const items = store.products.flatMap((p) =>
     p.variants

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Home,
   LayoutDashboard,
   Package,
   ShoppingCart,
@@ -19,7 +20,8 @@ import type { LowStockResponse } from "@/lib/types";
 import { ThemeToggle } from "./theme-toggle";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
+  { href: "/", label: "الرئيسية", icon: Home },
+  { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
   { href: "/inventory", label: "المخزون", icon: Package },
   { href: "/pos", label: "الفاتورة", icon: ShoppingCart },
   { href: "/reports", label: "التقارير", icon: BarChart3 },
@@ -28,7 +30,7 @@ const NAV_ITEMS = [
 ];
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -49,7 +51,7 @@ export function TopNav() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         {/* الشعار + الروابط (يمين في RTL) */}
         <div className="flex items-center gap-8">
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-base font-extrabold text-white">
               EB
             </span>
@@ -67,15 +69,15 @@ export function TopNav() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex h-16 items-center gap-2 border-b-[3px] px-3 text-sm font-medium transition-colors",
+                    "flex h-16 items-center gap-2 border-b-[3px] px-2.5 text-sm font-medium transition-colors lg:px-3",
                     active
                       ? "border-accent text-accent"
                       : "border-transparent text-muted hover:text-text"
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                  {item.href === "/dashboard" && lowStock > 0 && (
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="hidden lg:inline">{item.label}</span>
+                  {item.href === "/" && lowStock > 0 && (
                     <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold text-white nums">
                       {lowStock}
                     </span>
