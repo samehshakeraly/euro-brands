@@ -141,14 +141,17 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   );
   const brandOptions = (brandsData ?? []).map((b) => b.name);
 
-  // أنواع المنتجات — نجلبها كلها مرة واحدة ونفلتر محلياً حسب الفئة المختارة
-  // (القائمة صغيرة، وهذا يلغي حالة الفراغ المؤقتة عند تبديل الفئة)
+  // أنواع المنتجات للفئة المختارة — يُعاد الطلب تلقائياً عند تغيّر الفئة
+  // (useFetch يصفّر البيانات ويُلغي الاستجابات المتأخرة، فلا تظهر بيانات فئة قديمة)
   const {
     data: typesData,
     loading: typesLoading,
     error: typesError,
     refetch: refetchTypes,
-  } = useFetch<ProductTypeDTO[]>("/api/product-types");
+  } = useFetch<ProductTypeDTO[]>(
+    `/api/product-types?category=${encodeURIComponent(category)}`
+  );
+  // فلترة دفاعية إضافية لضمان مطابقة الفئة الحالية
   const typeOptions = useMemo(
     () => (typesData ?? []).filter((t) => t.category === category),
     [typesData, category]

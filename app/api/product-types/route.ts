@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, handleServerError } from "@/lib/api";
 import { toProductTypeDTO } from "@/lib/serializers";
 import { parseProductTypeInput, ValidationError } from "@/lib/validate";
+import { CATEGORIES, type CategoryValue } from "@/lib/constants";
 import {
   MOCK_MODE,
   mockListProductTypes,
@@ -15,11 +16,17 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const category = searchParams.get("category");
-    if (MOCK_MODE) return ok(mockListProductTypes(category));
+    const rawCategory = searchParams.get("category");
+    // تجاهل أي قيمة فئة غير صحيحة بدل تمريرها لـ Prisma (يمنع خطأ enum / 500)
+    const category =
+      rawCategory && CATEGORIES.includes(rawCategory as CategoryValue)
+        ? (rawCategory as Category)
+        : undefined;
+
+    if (MOCK_MODE) return ok(mockListProductTypes(category ?? null));
 
     const types = await prisma.productType.findMany({
-      where: category ? { category: category as Category } : undefined,
+      where: category ? { category } : undefined,
       orderBy: { name: "asc" },
     });
     return ok(types.map(toProductTypeDTO));
