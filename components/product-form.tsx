@@ -141,11 +141,14 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   );
   const brandOptions = (brandsData ?? []).map((b) => b.name);
 
-  // أنواع المنتجات حسب الفئة — مع فلترة دفاعية لضمان عرض أنواع الفئة الحالية فقط
-  // (حتى أثناء نافذة إعادة الجلب عند تغيير الفئة)
-  const { data: typesData, refetch: refetchTypes } = useFetch<ProductTypeDTO[]>(
-    `/api/product-types?category=${category}`
-  );
+  // أنواع المنتجات — نجلبها كلها مرة واحدة ونفلتر محلياً حسب الفئة المختارة
+  // (القائمة صغيرة، وهذا يلغي حالة الفراغ المؤقتة عند تبديل الفئة)
+  const {
+    data: typesData,
+    loading: typesLoading,
+    error: typesError,
+    refetch: refetchTypes,
+  } = useFetch<ProductTypeDTO[]>("/api/product-types");
   const typeOptions = useMemo(
     () => (typesData ?? []).filter((t) => t.category === category),
     [typesData, category]
@@ -450,9 +453,13 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 }}
               >
                 <option value="">
-                  {typeOptions.length === 0
-                    ? "لا توجد أنواع لهذه الفئة"
-                    : "اختر النوع"}
+                  {typesLoading
+                    ? "جاري تحميل الأنواع..."
+                    : typesError
+                      ? `تعذّر التحميل: ${typesError}`
+                      : typeOptions.length === 0
+                        ? "لا توجد أنواع لهذه الفئة"
+                        : "اختر النوع"}
                 </option>
                 {typeOptions.map((t) => (
                   <option key={t.id} value={t.id}>
