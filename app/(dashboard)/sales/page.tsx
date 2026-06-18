@@ -43,6 +43,7 @@ import {
   generateSalesPdf,
   paymentLabel,
 } from "@/lib/sales-export";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 import type { SaleDTO } from "@/lib/types";
 
 const PAYMENT_FILTERS = [
@@ -115,6 +116,12 @@ export default function SalesPage() {
         reason: cancelReason,
       });
       toast.success("تم إلغاء الفاتورة وإعادة الكميات للمخزون");
+      void logActivity(
+        ACTIVITY_ACTIONS.CANCEL_SALE,
+        `فاتورة ${formatSaleNumber(cancelTarget.saleNumber)}${
+          cancelReason.trim() ? ` — ${cancelReason.trim()}` : ""
+        }`
+      );
       setCancelTarget(null);
       setCancelReason("");
       refetch();
@@ -316,6 +323,7 @@ export default function SalesPage() {
                   <th className="px-3 py-3 font-medium">التاريخ</th>
                   <th className="px-3 py-3 font-medium">الفرع</th>
                   <th className="px-3 py-3 font-medium">العميل</th>
+                  <th className="px-3 py-3 font-medium">الكاشير</th>
                   <th className="px-3 py-3 font-medium">الدفع</th>
                   <th className="px-3 py-3 font-medium">الصافي</th>
                   <th className="px-3 py-3 font-medium">المتبقي</th>
@@ -345,6 +353,9 @@ export default function SalesPage() {
                       {sale.customerName || (
                         <span className="text-muted">عميل عابر</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3 text-text">
+                      {sale.cashierName || <span className="text-muted">—</span>}
                     </td>
                     <td className="px-3 py-3 text-muted">{paymentLabel(sale)}</td>
                     <td className="px-3 py-3 font-bold text-text nums">
@@ -412,6 +423,9 @@ export default function SalesPage() {
                   <span className="text-muted">{paymentLabel(sale)}</span>
                   {sale.customerName && (
                     <span className="text-text">· {sale.customerName}</span>
+                  )}
+                  {sale.cashierName && (
+                    <span className="text-muted">· كاشير: {sale.cashierName}</span>
                   )}
                 </div>
                 <div className="mt-3 flex items-end justify-between border-t pt-3">

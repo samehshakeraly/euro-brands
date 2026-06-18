@@ -4,6 +4,7 @@ import { ok, fail, handleServerError } from "@/lib/api";
 import { toProductDTO } from "@/lib/serializers";
 import { parseProductInput, ValidationError } from "@/lib/validate";
 import { MOCK_MODE, mockListProducts, mockCreateProduct } from "@/lib/mock-store";
+import { generateVariantSku } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,19 @@ export async function GET(req: Request) {
     const size = searchParams.get("size");
     const withSales = searchParams.get("withSales") === "1";
 
+    // مطابقة دقيقة لكود SKU → نعيد متغيّراً واحداً فقط مع منتجه
+    if (search) {
+      const exactSku = await prisma.productVariant.findUnique({
+        where: { sku: search },
+        include: { product: { include: { productType: true } } },
+      });
+      if (exactSku) {
+        const product = exactSku.product;
+        const dto = toProductDTO({ ...product, variants: [exactSku] });
+        return ok([dto]);
+      }
+    }
+
     const where: Prisma.ProductWhereInput = {};
 
     if (category) where.category = category as Category;
@@ -27,8 +41,12 @@ export async function GET(req: Request) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
         { brand: { contains: search, mode: "insensitive" } },
-        { sku: { contains: search, mode: "insensitive" } },
         { barcode: { contains: search } },
+        {
+          variants: {
+            some: { sku: { contains: search, mode: "insensitive" } },
+          },
+        },
       ];
     }
 
@@ -45,6 +63,7 @@ export async function GET(req: Request) {
     const products = await prisma.product.findMany({
       where,
       include: {
+        productType: true,
         variants: {
           where: hasVariantFilter ? variantWhere : undefined,
           orderBy: [{ branch: "asc" }, { size: "asc" }],
@@ -80,18 +99,32 @@ export async function POST(req: Request) {
 
     if (MOCK_MODE) return ok(mockCreateProduct(input), 201);
 
+    const pt = input.productTypeId
+      ? await prisma.productType.findUnique({ where: { id: input.productTypeId } })
+      : null;
+
     const product = await prisma.product.create({
       data: {
         name: input.name,
         brand: input.brand,
         category: input.category as Category,
         description: input.description,
-        sku: input.sku ?? null,
+        productTypeId: pt?.id ?? null,
         barcode: input.barcode ?? null,
         images: input.images,
         variants: {
           create: input.variants.map((v) => ({
             size: v.size,
+            color: v.color ?? null,
+            sku:
+              v.sku ??
+              generateVariantSku({
+                brand: input.brand,
+                typeCode: pt?.code ?? null,
+                colorCode: null,
+                size: v.size,
+                branch: v.branch,
+              }),
             branch: v.branch as Branch,
             quantity: v.quantity,
             minQuantity: v.minQuantity,
@@ -99,7 +132,7 @@ export async function POST(req: Request) {
           })),
         },
       },
-      include: { variants: true },
+      include: { variants: true, productType: true },
     });
 
     // تسجيل البراند ضمن سجل البراندات للفئة
@@ -117,6 +150,12 @@ export async function POST(req: Request) {
     return ok(toProductDTO(product), 201);
   } catch (error) {
     if (error instanceof ValidationError) return fail(error.message, 422);
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return fail("يوجد تكرار في كود SKU", 422);
+    }
     return handleServerError(error);
   }
 }

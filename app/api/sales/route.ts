@@ -19,7 +19,7 @@ const saleInclude = {
   items: {
     include: {
       product: { select: { name: true, brand: true } },
-      variant: { select: { size: true } },
+      variant: { select: { size: true, color: true } },
     },
   },
 } satisfies Prisma.SaleInclude;
@@ -182,6 +182,7 @@ export async function POST(req: Request) {
               customerName: input.customerName,
               customerPhone: input.customerPhone,
               customerNotes: input.customerNotes,
+              cashierName: input.cashierName ?? null,
               paymentMethod: input.paymentMethod as PaymentMethod,
               transferMethod: input.transferMethod ?? null,
               invoiceNotes: input.invoiceNotes ?? null,

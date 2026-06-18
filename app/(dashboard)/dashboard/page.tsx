@@ -17,6 +17,7 @@ import {
   RotateCcw,
   FileDown,
   FileSpreadsheet,
+  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -281,6 +282,15 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* أداء الكاشيرين */}
+          <Card className="p-5">
+            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-text">
+              <Users className="h-5 w-5 text-accent" />
+              أداء الكاشيرين
+            </h2>
+            <CashierStats rows={data.cashierStats} />
+          </Card>
+
           {/* القسم 4 — إحصائيات التوصيل */}
           <Card className="p-5">
             <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-text">
@@ -291,6 +301,51 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function CashierStats({ rows }: { rows: DashboardStats["cashierStats"] }) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="لا توجد بيانات كاشيرين"
+        description="ستظهر هنا فواتير الكاشيرين بعد تسجيلها في الفترة المحددة."
+      />
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px] text-right text-sm">
+        <thead>
+          <tr className="border-b text-muted">
+            <th className="px-3 py-2 font-medium">الاسم</th>
+            <th className="px-3 py-2 font-medium">عدد الفواتير</th>
+            <th className="px-3 py-2 font-medium">إجمالي المبيعات</th>
+            <th className="px-3 py-2 font-medium">متوسط قيمة الفاتورة</th>
+            <th className="px-3 py-2 font-medium">أعلى فاتورة</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.name} className="border-b border-[var(--border)]">
+              <td className="px-3 py-2.5 font-medium text-text">{c.name}</td>
+              <td className="px-3 py-2.5 text-text nums">
+                {formatNumber(c.count)}
+              </td>
+              <td className="px-3 py-2.5 font-bold text-text nums">
+                {formatCurrency(c.total)}
+              </td>
+              <td className="px-3 py-2.5 text-muted nums">
+                {formatCurrency(c.avgInvoice)}
+              </td>
+              <td className="px-3 py-2.5 text-muted nums">
+                {formatCurrency(c.maxInvoice)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

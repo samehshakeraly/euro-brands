@@ -39,6 +39,7 @@ import {
   formatNumber,
   formatSaleNumber,
 } from "@/lib/format";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 import type { SaleDTO } from "@/lib/types";
 
 const STATUS_STYLE: Record<DeliveryStatusValue, string> = {
@@ -117,6 +118,11 @@ export default function DeliveryPage() {
       );
       if (newStatus === "RETURNED")
         toast.success("تم إعادة الكميات للمخزون", { id: "restore" });
+      const order = orders.find((o) => o.id === id);
+      void logActivity(
+        ACTIVITY_ACTIONS.DELIVERY_STATUS,
+        `${order ? formatSaleNumber(order.saleNumber) : id} → ${DELIVERY_STATUS_LABELS[newStatus]}`
+      );
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "تعذّر تحديث الحالة");

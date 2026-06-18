@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, handleServerError } from "@/lib/api";
 import { toProductDTO } from "@/lib/serializers";
 import { parseProductInput, ValidationError } from "@/lib/validate";
+import { generateVariantSku } from "@/lib/constants";
 import {
   MOCK_MODE,
   mockGetProduct,
@@ -25,6 +26,7 @@ export async function GET(
     const product = await prisma.product.findUnique({
       where: { id: params.id },
       include: {
+        productType: true,
         variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] },
       },
     });
@@ -50,6 +52,12 @@ export async function PUT(
       return dto ? ok(dto) : fail("المنتج غير موجود", 404);
     }
 
+    const pt = input.productTypeId
+      ? await prisma.productType.findUnique({
+          where: { id: input.productTypeId },
+        })
+      : null;
+
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.productVariant.findMany({
         where: { productId: id },
@@ -65,7 +73,6 @@ export async function PUT(
       // المقاسات المحذوفة من النموذج
       const removedIds = [...existingIds].filter((eid) => !keptIds.has(eid));
       if (removedIds.length > 0) {
-        // لا يمكن حذف مقاس مرتبط بفواتير سابقة — نصفّر كميته بدلاً من ذلك
         const referenced = await tx.saleItem.findMany({
           where: { variantId: { in: removedIds } },
           select: { variantId: true },
@@ -88,11 +95,22 @@ export async function PUT(
 
       // تحديث/إضافة المقاسات
       for (const v of input.variants) {
+        const autoSku =
+          v.sku ??
+          generateVariantSku({
+            brand: input.brand,
+            typeCode: pt?.code ?? null,
+            colorCode: null,
+            size: v.size,
+            branch: v.branch,
+          });
         if (v.id && existingIds.has(v.id)) {
           await tx.productVariant.update({
             where: { id: v.id },
             data: {
               size: v.size,
+              color: v.color ?? null,
+              sku: v.sku ?? autoSku,
               branch: v.branch as Branch,
               quantity: v.quantity,
               minQuantity: v.minQuantity,
@@ -104,6 +122,8 @@ export async function PUT(
             data: {
               productId: id,
               size: v.size,
+              color: v.color ?? null,
+              sku: autoSku,
               branch: v.branch as Branch,
               quantity: v.quantity,
               minQuantity: v.minQuantity,
@@ -120,11 +140,14 @@ export async function PUT(
           brand: input.brand,
           category: input.category as Category,
           description: input.description,
-          sku: input.sku ?? null,
+          productTypeId: pt?.id ?? null,
           barcode: input.barcode ?? null,
           images: input.images,
         },
-        include: { variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] } },
+        include: {
+          productType: true,
+          variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] },
+        },
       });
     });
 
@@ -145,8 +168,7 @@ export async function PUT(
     if (error instanceof ValidationError) return fail(error.message, 422);
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2025") return fail("المنتج غير موجود", 404);
-      if (error.code === "P2002")
-        return fail("يوجد تكرار في نفس المقاس والفرع", 422);
+      if (error.code === "P2002") return fail("يوجد تكرار في كود SKU", 422);
     }
     return handleServerError(error);
   }
@@ -163,7 +185,6 @@ export async function DELETE(
       return res.ok ? ok({ success: true }) : fail(res.error, res.status);
     }
 
-    // منع الحذف إذا كان المنتج مرتبطاً بفواتير (للحفاظ على سجل المبيعات)
     const salesCount = await prisma.saleItem.count({
       where: { productId: params.id },
     });

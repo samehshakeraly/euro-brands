@@ -37,6 +37,7 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 
 interface Filters {
   search: string;
@@ -44,7 +45,6 @@ interface Filters {
   category: string;
   brand: string;
   size: string;
-  image: "" | "with" | "without";
 }
 type SortKey = "newest" | "mostSold" | "lowestQty";
 
@@ -54,7 +54,6 @@ const EMPTY_FILTERS: Filters = {
   category: "",
   brand: "",
   size: "",
-  image: "",
 };
 
 export default function InventoryPage() {
@@ -103,17 +102,14 @@ export default function InventoryPage() {
   const filtered = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
     const result = products.filter((p) => {
-      if (
-        q &&
-        !`${p.name} ${p.brand} ${p.sku ?? ""} ${p.barcode ?? ""}`
-          .toLowerCase()
-          .includes(q)
-      )
-        return false;
+      if (q) {
+        const haystack = `${p.name} ${p.brand} ${p.barcode ?? ""} ${p.variants
+          .map((v) => v.sku ?? "")
+          .join(" ")}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       if (filters.category && p.category !== filters.category) return false;
       if (filters.brand && p.brand !== filters.brand) return false;
-      if (filters.image === "with" && p.images.length === 0) return false;
-      if (filters.image === "without" && p.images.length > 0) return false;
       const variantMatch = p.variants.some(
         (v) =>
           (!filters.branch || v.branch === filters.branch) &&
@@ -138,6 +134,10 @@ export default function InventoryPage() {
     try {
       await apiDelete(`/api/products/${toDelete.id}`);
       toast.success("تم حذف المنتج بنجاح");
+      void logActivity(
+        ACTIVITY_ACTIONS.DELETE_PRODUCT,
+        `${toDelete.name} — ${toDelete.brand}`
+      );
       setToDelete(null);
       refetch();
     } catch (e) {
@@ -154,13 +154,15 @@ export default function InventoryPage() {
         name: `نسخة من ${product.name}`,
         brand: product.brand,
         category: product.category,
+        productTypeId: product.productTypeId,
         description: product.description,
-        sku: null,
         barcode: null,
         images: product.images,
         variants: product.variants.map((v) => ({
           branch: v.branch,
           size: v.size,
+          color: v.color,
+          sku: null, // يُولَّد تلقائياً للنسخة
           quantity: v.quantity,
           minQuantity: v.minQuantity,
           price: v.price,
@@ -289,21 +291,6 @@ export default function InventoryPage() {
                 {s}
               </option>
             ))}
-          </select>
-
-          <select
-            className="input"
-            value={filters.image}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                image: e.target.value as Filters["image"],
-              }))
-            }
-          >
-            <option value="">بصورة أو بدون</option>
-            <option value="with">بصورة</option>
-            <option value="without">بدون صورة</option>
           </select>
         </div>
 
@@ -486,9 +473,9 @@ function ProductCard({
             <Package className="h-10 w-10" />
           </div>
         )}
-        {product.sku && (
-          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white nums">
-            {product.sku}
+        {product.productTypeName && (
+          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+            {product.productTypeName}
           </span>
         )}
       </div>
@@ -581,9 +568,9 @@ function ProductListRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-medium text-text">{product.name}</p>
-          {product.sku && (
-            <span className="hidden text-xs text-muted nums sm:inline">
-              · {product.sku}
+          {product.productTypeName && (
+            <span className="hidden text-xs text-muted sm:inline">
+              · {product.productTypeName}
             </span>
           )}
         </div>

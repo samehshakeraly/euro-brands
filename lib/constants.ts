@@ -135,3 +135,113 @@ export function sizesForCategory(category: CategoryValue): readonly string[] {
 
 export const CURRENCY = "ج.م";
 export const LOW_STOCK_THRESHOLD = 3; // عتبة تحذير قلة المخزون
+
+// ----------------------------------------------------
+//  ألوان المنتجات — قائمة ثابتة بالأكواد المختصرة
+// ----------------------------------------------------
+export const COLORS = [
+  { name: "أبيض", code: "WHT", hex: "#ffffff" },
+  { name: "أسود", code: "BLK", hex: "#1a1a1a" },
+  { name: "رمادي", code: "GRY", hex: "#888888" },
+  { name: "أزرق", code: "BLU", hex: "#3b82f6" },
+  { name: "أحمر", code: "RED", hex: "#ef4444" },
+  { name: "أخضر", code: "GRN", hex: "#22c55e" },
+  { name: "بيج", code: "BEG", hex: "#d2b48c" },
+  { name: "بني", code: "BRN", hex: "#92400e" },
+  { name: "وردي", code: "PNK", hex: "#ec4899" },
+  { name: "أصفر", code: "YLW", hex: "#eab308" },
+  { name: "برتقالي", code: "ORG", hex: "#f97316" },
+  { name: "بنفسجي", code: "PUR", hex: "#a855f7" },
+] as const;
+
+export type ColorName = (typeof COLORS)[number]["name"];
+
+export const COLOR_NAMES: readonly string[] = COLORS.map((c) => c.name);
+
+export function colorMeta(
+  name: string | null | undefined
+): { name: string; code: string; hex: string } | null {
+  if (!name) return null;
+  return COLORS.find((c) => c.name === name) ?? null;
+}
+
+// ----------------------------------------------------
+//  أنواع المنتجات الافتراضية حسب الفئة
+// ----------------------------------------------------
+export const DEFAULT_PRODUCT_TYPES: Record<
+  CategoryValue,
+  { name: string; code: string }[]
+> = {
+  CLOTHES: [
+    { name: "تيشرت", code: "TSHIRT" },
+    { name: "بولو", code: "POLO" },
+    { name: "هودي", code: "HOOD" },
+    { name: "سويت شيرت", code: "SWEAT" },
+    { name: "جاكيت", code: "JKT" },
+    { name: "بليزر", code: "BLZR" },
+    { name: "قميص", code: "SHIRT" },
+    { name: "اخرى", code: "OTHER" },
+  ],
+  PANTS: [
+    { name: "جينز", code: "JEANS" },
+    { name: "سوت بانتس", code: "SWEATP" },
+    { name: "شورت", code: "SHORT" },
+    { name: "كارجو", code: "CARGO" },
+    { name: "ميوه", code: "MIO" },
+    { name: "اخرى", code: "OTHER" },
+  ],
+  SHOES: [
+    { name: "سنيكرز", code: "SNK" },
+    { name: "صندل", code: "SNDL" },
+    { name: "بوت", code: "BOOT" },
+    { name: "كلاسيك", code: "CLSC" },
+    { name: "شبشب", code: "SHIB" },
+    { name: "سليبر", code: "SLPR" },
+    { name: "اخرى", code: "OTHER" },
+  ],
+  PERFUMES: [
+    { name: "عطر رجالي", code: "MEN" },
+    { name: "عطر حريمي", code: "WOM" },
+    { name: "عطر مشترك", code: "UNI" },
+    { name: "اخرى", code: "OTHER" },
+  ],
+};
+
+// ----------------------------------------------------
+//  مولّد كود SKU للمتغيّر
+//  الشكل: [BRAND]-[TYPE]-[COLOR]-[SIZE]-[BRANCH]
+//  مثال: NIK-HOOD-BLK-M-HAD
+// ----------------------------------------------------
+export const BRANCH_SKU_CODES: Record<BranchValue, string> = {
+  HADAYEK: "HAD",
+  ZAHRAA: "ZAH",
+};
+
+export function brandSkuCode(brand: string): string {
+  const cleaned = brand.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase();
+  return cleaned || "BRD";
+}
+
+export function sizeSkuCode(size: string): string {
+  return (
+    String(size ?? "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "") || "U"
+  );
+}
+
+export function generateVariantSku(parts: {
+  brand: string;
+  typeCode?: string | null;
+  colorCode?: string | null;
+  size: string;
+  branch: BranchValue;
+}): string {
+  return [
+    brandSkuCode(parts.brand),
+    (parts.typeCode || "GEN").toUpperCase(),
+    (parts.colorCode || "DEF").toUpperCase(),
+    sizeSkuCode(parts.size),
+    BRANCH_SKU_CODES[parts.branch],
+  ].join("-");
+}

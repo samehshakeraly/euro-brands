@@ -9,7 +9,10 @@ import {
 import { calcDiscount, round2 } from "./sale-utils";
 import {
   BRANCHES,
+  DEFAULT_PRODUCT_TYPES,
   LOW_STOCK_THRESHOLD,
+  colorMeta,
+  generateVariantSku,
   type BranchValue,
   type CategoryValue,
   type DeliveryMethodValue,
@@ -20,9 +23,15 @@ import {
   type TransferMethodValue,
   type SaleStatusValue,
 } from "./constants";
+
+function colorCodeFor(color: string | null): string | null {
+  return colorMeta(color)?.code ?? null;
+}
 import { ValidationError } from "./validate";
 import type { NormProduct, NormSale } from "./insights-analytics";
 import type {
+  ActivityLogDTO,
+  ActivityLogInput,
   BrandDTO,
   DashboardStats,
   ImportResult,
@@ -30,6 +39,8 @@ import type {
   LowStockResponse,
   ProductDTO,
   ProductInput,
+  ProductTypeDTO,
+  ProductTypeInput,
   ReportsData,
   SaleDTO,
   SaleInput,
@@ -49,6 +60,8 @@ interface MVariant {
   id: string;
   productId: string;
   size: string;
+  color: string | null;
+  sku: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
@@ -60,12 +73,18 @@ interface MProduct {
   brand: string;
   category: CategoryValue;
   description: string | null;
-  sku: string | null;
+  productTypeId: string | null;
   barcode: string | null;
   images: string[];
   variants: MVariant[];
   createdAt: Date;
   updatedAt: Date;
+}
+interface MProductType {
+  id: string;
+  name: string;
+  code: string;
+  category: CategoryValue;
 }
 interface MItem {
   id: string;
@@ -87,6 +106,7 @@ interface MSale {
   customerName: string | null;
   customerPhone: string | null;
   customerNotes: string | null;
+  cashierName: string | null;
   paymentMethod: PaymentMethodValue;
   transferMethod: TransferMethodValue | null;
   invoiceNotes: string | null;
@@ -111,10 +131,21 @@ interface MBrand {
   category: CategoryValue;
 }
 
+interface MActivity {
+  id: string;
+  userName: string;
+  userRole: string;
+  action: string;
+  details: string | null;
+  createdAt: Date;
+}
+
 interface Store {
   products: MProduct[];
   sales: MSale[];
   brands: MBrand[];
+  productTypes: MProductType[];
+  activityLogs: MActivity[];
   seq: number;
 }
 
@@ -136,36 +167,72 @@ const IMG = (seed: string) =>
 //  بناء البيانات التجريبية
 // ----------------------------------------------------
 function buildStore(): Store {
-  const store: Store = { products: [], sales: [], brands: [], seq: 0 };
+  const store: Store = {
+    products: [],
+    sales: [],
+    brands: [],
+    productTypes: [],
+    activityLogs: [],
+    seq: 0,
+  };
   const id = (p: string) => `${p}_${++store.seq}`;
 
-  type VSpec = [size: string, branch: BranchValue, qty: number, price: number];
+  // أنواع المنتجات الافتراضية لكل فئة
+  for (const cat of Object.keys(DEFAULT_PRODUCT_TYPES) as CategoryValue[]) {
+    for (const t of DEFAULT_PRODUCT_TYPES[cat]) {
+      store.productTypes.push({
+        id: id("pt"),
+        name: t.name,
+        code: t.code,
+        category: cat,
+      });
+    }
+  }
+
+  type VSpec = [
+    size: string,
+    branch: BranchValue,
+    qty: number,
+    price: number,
+    color?: string,
+  ];
   const def = (
     name: string,
     brand: string,
     category: CategoryValue,
+    typeName: string,
     description: string,
     image: string,
     specs: VSpec[]
   ): MProduct => {
     const pid = id("p");
     const n = pid.split("_")[1];
-    const code = brand.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase();
+    const pt = store.productTypes.find(
+      (x) => x.name === typeName && x.category === category
+    );
     return {
       id: pid,
       name,
       brand,
       category,
       description,
-      sku: `${code}-${String(n).padStart(3, "0")}`,
+      productTypeId: pt?.id ?? null,
       barcode: `62${String(n).padStart(10, "0")}`,
       images: [image],
       createdAt: new Date(),
       updatedAt: new Date(),
-      variants: specs.map(([size, branch, quantity, price]) => ({
+      variants: specs.map(([size, branch, quantity, price, color]) => ({
         id: id("v"),
         productId: pid,
         size,
+        color: color ?? null,
+        sku: generateVariantSku({
+          brand,
+          typeCode: pt?.code ?? null,
+          colorCode: colorCodeFor(color ?? null),
+          size,
+          branch,
+        }),
         quantity,
         minQuantity: 5,
         branch,
@@ -182,117 +249,126 @@ function buildStore(): Store {
       "تيشيرت قطن كلاسيك",
       "Zara",
       "CLOTHES",
+      "تيشرت",
       "تيشيرت قطني مريح بقصة كلاسيكية مناسب للارتداء اليومي.",
       IMG("photo-1521572163474-6864f9cf17ab"),
       [
-        ["S", H, 14, 350],
-        ["M", H, 22, 350],
-        ["L", H, 10, 350],
-        ["XL", H, 3, 350],
-        ["M", Z, 12, 350],
-        ["L", Z, 8, 350],
-        ["XL", Z, 0, 350],
+        ["S", H, 14, 350, "أبيض"],
+        ["M", H, 22, 350, "أبيض"],
+        ["L", H, 10, 350, "أسود"],
+        ["XL", H, 3, 350, "أسود"],
+        ["M", Z, 12, 350, "أبيض"],
+        ["L", Z, 8, 350, "أزرق"],
+        ["XL", Z, 0, 350, "أزرق"],
       ]
     ),
     def(
       "قميص كاجوال مقلّم",
       "H&M",
       "CLOTHES",
+      "قميص",
       "قميص كاجوال بأكمام طويلة وخامة قطنية ناعمة.",
       IMG("photo-1602810318383-e386cc2a3ccf"),
       [
-        ["M", H, 9, 480],
-        ["L", H, 11, 480],
-        ["XL", H, 6, 480],
-        ["L", Z, 7, 480],
-        ["2XL", Z, 2, 480],
+        ["M", H, 9, 480, "بيج"],
+        ["L", H, 11, 480, "بيج"],
+        ["XL", H, 6, 480, "بني"],
+        ["L", Z, 7, 480, "بيج"],
+        ["2XL", Z, 2, 480, "بني"],
       ]
     ),
     def(
       "هودي بقلنسوة",
       "Adidas",
       "CLOTHES",
+      "هودي",
       "هودي رياضي دافئ بقلنسوة وجيب أمامي.",
       IMG("photo-1556821840-3a63f95609a7"),
       [
-        ["M", H, 8, 890],
-        ["L", H, 5, 890],
-        ["XL", H, 1, 890],
-        ["M", Z, 6, 890],
-        ["L", Z, 9, 890],
+        ["M", H, 8, 890, "أسود"],
+        ["L", H, 5, 890, "أسود"],
+        ["XL", H, 1, 890, "رمادي"],
+        ["M", Z, 6, 890, "رمادي"],
+        ["L", Z, 9, 890, "أسود"],
       ]
     ),
     def(
       "بنطلون جينز سليم",
       "Levi's",
       "PANTS",
+      "جينز",
       "بنطلون جينز بقصة سليم عصرية وخامة متينة.",
       IMG("photo-1542272604-787c3835535d"),
       [
-        ["M", H, 7, 720],
-        ["L", H, 12, 720],
-        ["XL", H, 4, 720],
-        ["L", Z, 9, 720],
-        ["2XL", Z, 3, 720],
+        ["M", H, 7, 720, "أزرق"],
+        ["L", H, 12, 720, "أزرق"],
+        ["XL", H, 4, 720, "أسود"],
+        ["L", Z, 9, 720, "أزرق"],
+        ["2XL", Z, 3, 720, "أسود"],
       ]
     ),
     def(
       "بنطلون تشينو",
       "Tommy Hilfiger",
       "PANTS",
+      "كارجو",
       "بنطلون تشينو أنيق مناسب للإطلالات شبه الرسمية.",
       IMG("photo-1473966968600-fa801b869a1a"),
       [
-        ["M", H, 5, 950],
-        ["L", H, 6, 950],
-        ["L", Z, 4, 950],
-        ["XL", Z, 2, 950],
+        ["M", H, 5, 950, "بيج"],
+        ["L", H, 6, 950, "بيج"],
+        ["L", Z, 4, 950, "أسود"],
+        ["XL", Z, 2, 950, "أسود"],
       ]
     ),
     def(
       "حذاء رياضي خفيف",
       "Nike",
       "SHOES",
+      "سنيكرز",
       "حذاء رياضي خفيف الوزن مناسب للجري والمشي.",
       IMG("photo-1542291026-7eec264c27ff"),
       [
-        ["41", H, 6, 1450],
-        ["42", H, 10, 1450],
-        ["43", H, 4, 1450],
-        ["42", Z, 7, 1450],
-        ["44", Z, 0, 1450],
+        ["41", H, 6, 1450, "أبيض"],
+        ["42", H, 10, 1450, "أبيض"],
+        ["43", H, 4, 1450, "أسود"],
+        ["42", Z, 7, 1450, "أبيض"],
+        ["44", Z, 0, 1450, "أسود"],
       ]
     ),
     def(
       "حذاء كلاسيك جلد",
       "Clarks",
       "SHOES",
+      "كلاسيك",
       "حذاء جلد طبيعي بتصميم كلاسيكي أنيق للمناسبات الرسمية.",
       IMG("photo-1449505278894-297fdb3edbc1"),
       [
-        ["40", H, 5, 1850],
-        ["41", H, 7, 1850],
-        ["42", Z, 3, 1850],
-        ["43", Z, 6, 1850],
+        ["40", H, 5, 1850, "بني"],
+        ["41", H, 7, 1850, "بني"],
+        ["42", Z, 3, 1850, "أسود"],
+        ["43", Z, 6, 1850, "بني"],
       ]
     ),
     def(
       "حذاء جري احترافي",
       "Puma",
       "SHOES",
+      "سنيكرز",
       "حذاء جري بنعل مرن يوفر دعماً ممتازاً للقدم.",
       IMG("photo-1608231387042-66d1773070a5"),
       [
-        ["42", H, 8, 1650],
-        ["43", H, 2, 1650],
-        ["41", Z, 5, 1650],
-        ["42", Z, 9, 1650],
+        ["42", H, 8, 1650, "أسود"],
+        ["43", H, 2, 1650, "أسود"],
+        ["41", Z, 5, 1650, "أحمر"],
+        ["42", Z, 9, 1650, "أحمر"],
       ]
     ),
     def(
       "عطر شرقي فاخر",
       "Lattafa",
       "PERFUMES",
+      "عطر مشترك",
       "عطر شرقي فاخر بمزيج من العود والمسك يدوم طويلاً.",
       IMG("photo-1592945403244-b3fbafd7f539"),
       [
@@ -305,6 +381,7 @@ function buildStore(): Store {
       "عطر خشبي منعش",
       "Armaf",
       "PERFUMES",
+      "عطر رجالي",
       "عطر خشبي منعش يناسب الاستخدام اليومي بثبات عالٍ.",
       IMG("photo-1541643600914-78b084683601"),
       [
@@ -328,6 +405,9 @@ function buildStore(): Store {
     ["", ""],
     ["", ""],
   ];
+
+  // كاشيرون تجريبيون لتوزيع الفواتير عليهم (لإظهار «أداء الكاشيرين»)
+  const cashiers = ["محمود", "إسلام", "ندى"];
 
   const totalSalesToGenerate = 42;
   for (let i = 0; i < totalSalesToGenerate; i++) {
@@ -460,6 +540,7 @@ function buildStore(): Store {
       customerName: cName || null,
       customerPhone: cPhone || null,
       customerNotes: null,
+      cashierName: cashiers[Math.floor(rng() * cashiers.length)],
       paymentMethod,
       transferMethod,
       invoiceNotes: null,
@@ -509,6 +590,25 @@ function buildStore(): Store {
     }
   }
 
+  // بعض سجلات النشاط التجريبية (لعرض الصفحة لدى المدير)
+  const seedLogs: [string, string, string, string | null][] = [
+    ["محمود", "CASHIER", "تسجيل دخول", null],
+    ["إسلام", "CASHIER", "تسجيل دخول", null],
+    ["المدير", "ADMIN", "تسجيل دخول", null],
+    ["محمود", "CASHIER", "إنشاء فاتورة", "فاتورة #000001"],
+    ["المدير", "ADMIN", "إضافة منتج", "هودي بقلنسوة"],
+  ];
+  seedLogs.forEach(([userName, userRole, action, details], i) => {
+    store.activityLogs.push({
+      id: id("al"),
+      userName,
+      userRole,
+      action,
+      details,
+      createdAt: new Date(now.getTime() - (i + 1) * 3600_000),
+    });
+  });
+
   return store;
 }
 
@@ -525,6 +625,8 @@ function shapeVariant(v: MVariant): VariantDTO {
     id: v.id,
     productId: v.productId,
     size: v.size,
+    color: v.color,
+    sku: v.sku,
     quantity: v.quantity,
     minQuantity: v.minQuantity,
     branch: v.branch,
@@ -539,13 +641,18 @@ function shapeProduct(
   const variants = (filter ? p.variants.filter(filter) : p.variants).map(
     shapeVariant
   );
+  const pt = p.productTypeId
+    ? store.productTypes.find((x) => x.id === p.productTypeId) ?? null
+    : null;
   return {
     id: p.id,
     name: p.name,
     brand: p.brand,
     category: p.category,
     description: p.description,
-    sku: p.sku,
+    productTypeId: p.productTypeId,
+    productTypeName: pt?.name ?? null,
+    productTypeCode: pt?.code ?? null,
     barcode: p.barcode,
     images: p.images,
     variants,
@@ -577,6 +684,7 @@ function shapeSale(s: MSale): SaleDTO {
     customerName: s.customerName,
     customerPhone: s.customerPhone,
     customerNotes: s.customerNotes,
+    cashierName: s.cashierName ?? null,
     paymentMethod: s.paymentMethod,
     transferMethod: s.transferMethod,
     invoiceNotes: s.invoiceNotes,
@@ -604,6 +712,7 @@ function shapeSale(s: MSale): SaleDTO {
         productName: ref?.product.name ?? "—",
         brand: ref?.product.brand ?? "",
         size: ref?.variant.size ?? "—",
+        color: ref?.variant.color ?? null,
       };
     }),
     itemsCount: s.items.reduce((sum, it) => sum + it.quantity, 0),
@@ -660,9 +769,22 @@ export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
   const brand = sp.get("brand");
   const size = sp.get("size");
   const withSales = sp.get("withSales") === "1";
-  const hasVariantFilter = !!(branch || size);
   const soldMap = withSales ? soldCountByProduct() : null;
 
+  // البحث الفوري بكود SKU — يطابق متغيّراً واحداً ويعيد منتجه فقط
+  if (search) {
+    for (const p of store.products) {
+      for (const v of p.variants) {
+        if (v.sku && v.sku.toLowerCase() === search) {
+          const dto = shapeProduct(p, (x) => x.id === v.id);
+          if (soldMap) dto.soldCount = soldMap.get(p.id) ?? 0;
+          return [dto];
+        }
+      }
+    }
+  }
+
+  const hasVariantFilter = !!(branch || size);
   const matchVariant = (v: MVariant) =>
     (!branch || v.branch === branch) && (!size || v.size === size);
 
@@ -670,13 +792,12 @@ export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
     .filter((p) => {
       if (category && p.category !== category) return false;
       if (brand && p.brand !== brand) return false;
-      if (
-        search &&
-        !`${p.name} ${p.brand} ${p.sku ?? ""} ${p.barcode ?? ""}`
-          .toLowerCase()
-          .includes(search)
-      )
-        return false;
+      if (search) {
+        const haystack = `${p.name} ${p.brand} ${p.barcode ?? ""} ${p.variants
+          .map((v) => v.sku ?? "")
+          .join(" ")}`.toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
       if (hasVariantFilter && !p.variants.some(matchVariant)) return false;
       return true;
     })
@@ -778,13 +899,16 @@ export function mockLowStock(): LowStockResponse {
 
 export function mockCreateProduct(input: ProductInput): ProductDTO {
   const pid = nextId("p");
+  const pt = input.productTypeId
+    ? store.productTypes.find((x) => x.id === input.productTypeId) ?? null
+    : null;
   const product: MProduct = {
     id: pid,
     name: input.name,
     brand: input.brand,
     category: input.category,
     description: input.description ?? null,
-    sku: input.sku ?? null,
+    productTypeId: pt?.id ?? null,
     barcode: input.barcode ?? null,
     images: input.images,
     createdAt: new Date(),
@@ -793,6 +917,16 @@ export function mockCreateProduct(input: ProductInput): ProductDTO {
       id: nextId("v"),
       productId: pid,
       size: v.size,
+      color: v.color ?? null,
+      sku:
+        v.sku ??
+        generateVariantSku({
+          brand: input.brand,
+          typeCode: pt?.code ?? null,
+          colorCode: colorCodeFor(v.color ?? null),
+          size: v.size,
+          branch: v.branch,
+        }),
       branch: v.branch,
       quantity: v.quantity,
       minQuantity: v.minQuantity,
@@ -828,12 +962,27 @@ export function mockUpdateProduct(
     return false;
   });
 
+  const pt = input.productTypeId
+    ? store.productTypes.find((x) => x.id === input.productTypeId) ?? null
+    : null;
+
   for (const vi of input.variants) {
+    const autoSku =
+      vi.sku ??
+      generateVariantSku({
+        brand: input.brand,
+        typeCode: pt?.code ?? null,
+        colorCode: colorCodeFor(vi.color ?? null),
+        size: vi.size,
+        branch: vi.branch,
+      });
     const existing = vi.id
       ? product.variants.find((v) => v.id === vi.id)
       : undefined;
     if (existing) {
       existing.size = vi.size;
+      existing.color = vi.color ?? null;
+      existing.sku = vi.sku ?? autoSku;
       existing.branch = vi.branch;
       existing.quantity = vi.quantity;
       existing.minQuantity = vi.minQuantity;
@@ -843,6 +992,8 @@ export function mockUpdateProduct(
         id: nextId("v"),
         productId: product.id,
         size: vi.size,
+        color: vi.color ?? null,
+        sku: autoSku,
         branch: vi.branch,
         quantity: vi.quantity,
         minQuantity: vi.minQuantity,
@@ -855,7 +1006,7 @@ export function mockUpdateProduct(
   product.brand = input.brand;
   product.category = input.category;
   product.description = input.description ?? null;
-  product.sku = input.sku ?? null;
+  product.productTypeId = pt?.id ?? null;
   product.barcode = input.barcode ?? null;
   product.images = input.images;
   product.updatedAt = new Date();
@@ -900,6 +1051,25 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
       (p) => key(p.name) === key(row.name) && key(p.brand) === key(row.brand)
     );
 
+    // نوع المنتج (اختياري) — إنشاء عند الحاجة
+    let pt: MProductType | null = null;
+    if (row.productTypeName) {
+      pt =
+        store.productTypes.find(
+          (t) =>
+            t.name === row.productTypeName && t.category === row.category
+        ) ?? null;
+      if (!pt) {
+        pt = {
+          id: nextId("pt"),
+          name: row.productTypeName,
+          code: row.productTypeName.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
+          category: row.category,
+        };
+        store.productTypes.push(pt);
+      }
+    }
+
     if (!product) {
       product = {
         id: nextId("p"),
@@ -907,7 +1077,7 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
         brand: row.brand,
         category: row.category,
         description: null,
-        sku: null,
+        productTypeId: pt?.id ?? null,
         barcode: null,
         images: [],
         createdAt: new Date(),
@@ -917,20 +1087,43 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
       store.products.unshift(product);
       registerBrand(product.brand, product.category);
       result.newProducts++;
+    } else if (pt && !product.productTypeId) {
+      product.productTypeId = pt.id;
     }
 
+    const productType = product.productTypeId
+      ? store.productTypes.find((t) => t.id === product!.productTypeId) ?? null
+      : null;
+
+    const autoSku =
+      row.sku ??
+      generateVariantSku({
+        brand: row.brand,
+        typeCode: productType?.code ?? null,
+        colorCode: colorCodeFor(row.color ?? null),
+        size: row.size,
+        branch: row.branch,
+      });
+
     const variant = product.variants.find(
-      (v) => v.size === row.size && v.branch === row.branch
+      (v) =>
+        v.size === row.size &&
+        v.branch === row.branch &&
+        (v.color ?? null) === (row.color ?? null)
     );
     if (variant) {
       variant.quantity = row.quantity;
       variant.price = row.price;
+      if (row.sku) variant.sku = row.sku;
+      else if (!variant.sku) variant.sku = autoSku;
       result.updatedVariants++;
     } else {
       product.variants.push({
         id: nextId("v"),
         productId: product.id,
         size: row.size,
+        color: row.color ?? null,
+        sku: autoSku,
         branch: row.branch,
         quantity: row.quantity,
         minQuantity: 5,
@@ -942,6 +1135,129 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
   }
 
   return result;
+}
+
+// ----------------------------------------------------
+//  أنواع المنتجات
+// ----------------------------------------------------
+
+// upsert صامت لقائمة الأنواع الافتراضية على المتجر — إعادة آمنة بلا فقد
+// لأنواع موجودة، وتُبقي أي أنواع مخصّصة أضافها المستخدم
+function ensureDefaultProductTypes(): { added: number; updated: number } {
+  let added = 0;
+  let updated = 0;
+  for (const cat of Object.keys(DEFAULT_PRODUCT_TYPES) as CategoryValue[]) {
+    for (const t of DEFAULT_PRODUCT_TYPES[cat]) {
+      const existing = store.productTypes.find(
+        (x) => x.name === t.name && x.category === cat
+      );
+      if (existing) {
+        if (existing.code !== t.code) {
+          existing.code = t.code;
+          updated++;
+        }
+      } else {
+        store.productTypes.push({
+          id: nextId("pt"),
+          name: t.name,
+          code: t.code,
+          category: cat,
+        });
+        added++;
+      }
+    }
+  }
+  return { added, updated };
+}
+
+export function mockListProductTypes(category?: string | null): ProductTypeDTO[] {
+  // مزامنة الأنواع الافتراضية تلقائياً عند كل قراءة — رخيصة وبدون آثار جانبية
+  ensureDefaultProductTypes();
+  return store.productTypes
+    .filter((t) => !category || t.category === category)
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      code: t.code,
+      category: t.category,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+}
+
+export function mockCreateProductType(input: ProductTypeInput): ProductTypeDTO {
+  const found = store.productTypes.find(
+    (t) => t.name === input.name && t.category === input.category
+  );
+  if (found) {
+    found.code = input.code; // تحديث الكود إذا تغيّر
+    return { id: found.id, name: found.name, code: found.code, category: found.category };
+  }
+  const t: MProductType = {
+    id: nextId("pt"),
+    name: input.name,
+    code: input.code,
+    category: input.category,
+  };
+  store.productTypes.push(t);
+  return { id: t.id, name: t.name, code: t.code, category: t.category };
+}
+
+// زرع الأنواع الافتراضية صراحةً (يستدعى من /api/seed/product-types)
+export function mockSeedProductTypes(): {
+  added: number;
+  updated: number;
+  total: number;
+} {
+  const { added, updated } = ensureDefaultProductTypes();
+  return { added, updated, total: store.productTypes.length };
+}
+
+// ----------------------------------------------------
+//  سجل النشاط
+// ----------------------------------------------------
+export function mockListActivity(sp: URLSearchParams): ActivityLogDTO[] {
+  const user = sp.get("user")?.trim();
+  const from = sp.get("from") ? new Date(sp.get("from")!) : null;
+  const to = sp.get("to") ? new Date(sp.get("to")!) : null;
+  const limit = Math.min(Number(sp.get("limit")) || 500, 1000);
+
+  return store.activityLogs
+    .filter((a) => {
+      if (user && a.userName !== user) return false;
+      if (from && a.createdAt < from) return false;
+      if (to && a.createdAt > to) return false;
+      return true;
+    })
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map((a) => ({
+      id: a.id,
+      userName: a.userName,
+      userRole: a.userRole,
+      action: a.action,
+      details: a.details,
+      createdAt: a.createdAt.toISOString(),
+    }));
+}
+
+export function mockCreateActivity(input: ActivityLogInput): ActivityLogDTO {
+  const a: MActivity = {
+    id: nextId("al"),
+    userName: input.userName,
+    userRole: input.userRole,
+    action: input.action,
+    details: input.details ?? null,
+    createdAt: new Date(),
+  };
+  store.activityLogs.push(a);
+  return {
+    id: a.id,
+    userName: a.userName,
+    userRole: a.userRole,
+    action: a.action,
+    details: a.details,
+    createdAt: a.createdAt.toISOString(),
+  };
 }
 
 // ----------------------------------------------------
@@ -1065,6 +1381,7 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
     customerName: input.customerName ?? null,
     customerPhone: input.customerPhone ?? null,
     customerNotes: input.customerNotes ?? null,
+    cashierName: input.cashierName ?? null,
     paymentMethod: input.paymentMethod,
     transferMethod: input.transferMethod ?? null,
     invoiceNotes: input.invoiceNotes ?? null,
@@ -1219,6 +1536,10 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
     { name: string; phone: string | null; total: number; count: number }
   >();
   const paymentMap = new Map<PaymentKey, { total: number; count: number }>();
+  const cashierMap = new Map<
+    string,
+    { count: number; total: number; maxInvoice: number }
+  >();
 
   const customerKey = (name: string | null, phone: string | null) =>
     `${(name ?? "").trim()}|${(phone ?? "").trim()}`;
@@ -1274,6 +1595,20 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
       if (sale.deliveryStatus === "RETURNED") returnedCount += 1;
     } else {
       pickupCount += 1;
+    }
+
+    // أداء الكاشير
+    const cashier = (sale.cashierName ?? "").trim();
+    if (cashier) {
+      const cs = cashierMap.get(cashier) ?? {
+        count: 0,
+        total: 0,
+        maxInvoice: 0,
+      };
+      cs.count += 1;
+      cs.total += sale.finalAmount;
+      if (sale.finalAmount > cs.maxInvoice) cs.maxInvoice = sale.finalAmount;
+      cashierMap.set(cashier, cs);
     }
 
     for (const item of sale.items) {
@@ -1453,6 +1788,16 @@ export function mockDashboard(sp: URLSearchParams): DashboardStats {
       .map((p) => ({ ...p, revenue: round2(p.revenue) })),
     topBrand,
     newCustomersCount,
+
+    cashierStats: [...cashierMap.entries()]
+      .map(([name, v]) => ({
+        name,
+        count: v.count,
+        total: round2(v.total),
+        avgInvoice: v.count ? round2(v.total / v.count) : 0,
+        maxInvoice: round2(v.maxInvoice),
+      }))
+      .sort((a, b) => b.total - a.total),
 
     deliveryStats: {
       deliveryCount,

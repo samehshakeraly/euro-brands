@@ -16,10 +16,12 @@ import {
   type TransferMethodValue,
 } from "./constants";
 import type {
+  ActivityLogInput,
   BrandInput,
   DeliveryInput,
   ImportRow,
   ProductInput,
+  ProductTypeInput,
   SaleInput,
   VariantInput,
 } from "./types";
@@ -50,9 +52,12 @@ export function parseProductInput(body: any): ProductInput {
     throw new ValidationError("يجب إضافة صف واحد على الأقل للمقاسات والكميات");
 
   const seen = new Set<string>();
+  const seenSkus = new Set<string>();
   const variants: VariantInput[] = rawVariants.map((v: any, i: number) => {
     const size = asString(v?.size);
     const branch = asString(v?.branch);
+    const color = asString(v?.color) || null;
+    const sku = asString(v?.sku) || null;
     const quantity = Number(v?.quantity);
     const price = Number(v?.price);
     const minRaw = Number(v?.minQuantity);
@@ -67,18 +72,26 @@ export function parseProductInput(body: any): ProductInput {
     if (!Number.isFinite(price) || price < 0)
       throw new ValidationError(`السعر غير صحيح في الصف ${i + 1}`);
 
-    const key = `${size}__${branch}`;
+    const key = `${size}__${branch}__${color ?? ""}`;
     if (seen.has(key))
       throw new ValidationError(
-        `لا يمكن تكرار نفس المقاس في نفس الفرع (${size})`
+        `تكرار لنفس المقاس واللون في نفس الفرع (الصف ${i + 1})`
       );
     seen.add(key);
+
+    if (sku) {
+      if (seenSkus.has(sku))
+        throw new ValidationError(`تكرار لنفس كود SKU (${sku})`);
+      seenSkus.add(sku);
+    }
 
     const id = asString(v?.id) || undefined;
 
     return {
       id,
       size,
+      color,
+      sku,
       branch: branch as BranchValue,
       quantity: Math.floor(quantity),
       minQuantity,
@@ -91,11 +104,23 @@ export function parseProductInput(body: any): ProductInput {
     brand,
     category: category as CategoryValue,
     description: asString(body?.description) || null,
-    sku: asString(body?.sku) || null,
+    productTypeId: asString(body?.productTypeId) || null,
     barcode: asString(body?.barcode) || null,
     images,
     variants,
   };
+}
+
+// التحقق من مدخلات نوع المنتج
+export function parseProductTypeInput(body: any): ProductTypeInput {
+  const name = asString(body?.name);
+  const code = asString(body?.code).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const category = asString(body?.category);
+  if (!name) throw new ValidationError("اسم النوع مطلوب");
+  if (!code) throw new ValidationError("كود النوع مطلوب");
+  if (!CATEGORIES.includes(category as CategoryValue))
+    throw new ValidationError("الفئة غير صحيحة");
+  return { name, code, category: category as CategoryValue };
 }
 
 // التحقق من صفوف استيراد الجرد
@@ -110,6 +135,9 @@ export function parseImportRows(body: any): ImportRow[] {
     const category = asString(r?.category);
     const branch = asString(r?.branch);
     const size = asString(r?.size);
+    const color = asString(r?.color) || null;
+    const sku = asString(r?.sku) || null;
+    const productTypeName = asString(r?.productTypeName) || null;
     const quantity = Number(r?.quantity);
     const price = Number(r?.price);
     const at = `الصف ${i + 1}`;
@@ -130,8 +158,11 @@ export function parseImportRows(body: any): ImportRow[] {
       name,
       brand,
       category: category as CategoryValue,
+      productTypeName,
       branch: branch as BranchValue,
       size,
+      color,
+      sku,
       quantity: Math.floor(quantity),
       price,
     };
@@ -213,11 +244,27 @@ export function parseSaleInput(body: any): SaleInput {
     customerName: asString(body?.customerName) || null,
     customerPhone: asString(body?.customerPhone) || null,
     customerNotes: asString(body?.customerNotes) || null,
+    cashierName: asString(body?.cashierName) || null,
     paymentMethod: paymentMethod as PaymentMethodValue,
     transferMethod,
     invoiceNotes: asString(body?.invoiceNotes) || null,
     paidAmount,
     delivery,
+  };
+}
+
+// التحقق من مدخلات سجل النشاط
+export function parseActivityInput(body: any): ActivityLogInput {
+  const userName = asString(body?.userName);
+  const userRole = asString(body?.userRole);
+  const action = asString(body?.action);
+  if (!userName) throw new ValidationError("اسم المستخدم مطلوب");
+  if (!action) throw new ValidationError("الإجراء مطلوب");
+  return {
+    userName,
+    userRole: userRole || "—",
+    action,
+    details: asString(body?.details) || null,
   };
 }
 

@@ -167,6 +167,10 @@ export async function GET(req: Request) {
       { name: string; phone: string | null; total: number; count: number }
     >();
     const paymentMap = new Map<PaymentKey, { total: number; count: number }>();
+    const cashierMap = new Map<
+      string,
+      { count: number; total: number; maxInvoice: number }
+    >();
 
     let rangeTotal = 0;
     let grossSales = 0;
@@ -227,6 +231,20 @@ export async function GET(req: Request) {
         if (sale.deliveryStatus === "RETURNED") returnedCount += 1;
       } else {
         pickupCount += 1;
+      }
+
+      // أداء الكاشير
+      const cashier = (sale.cashierName ?? "").trim();
+      if (cashier) {
+        const cs = cashierMap.get(cashier) ?? {
+          count: 0,
+          total: 0,
+          maxInvoice: 0,
+        };
+        cs.count += 1;
+        cs.total += sale.finalAmount;
+        if (sale.finalAmount > cs.maxInvoice) cs.maxInvoice = sale.finalAmount;
+        cashierMap.set(cashier, cs);
       }
 
       for (const item of sale.items) {
@@ -367,6 +385,16 @@ export async function GET(req: Request) {
         .map((p) => ({ ...p, revenue: round2(p.revenue) })),
       topBrand,
       newCustomersCount,
+
+      cashierStats: [...cashierMap.entries()]
+        .map(([name, v]) => ({
+          name,
+          count: v.count,
+          total: round2(v.total),
+          avgInvoice: v.count ? round2(v.total / v.count) : 0,
+          maxInvoice: round2(v.maxInvoice),
+        }))
+        .sort((a, b) => b.total - a.total),
 
       deliveryStats: {
         deliveryCount,

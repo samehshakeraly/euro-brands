@@ -16,6 +16,8 @@ export interface VariantDTO {
   id: string;
   productId: string;
   size: string;
+  color: string | null;
+  sku: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
@@ -28,7 +30,9 @@ export interface ProductDTO {
   brand: string;
   category: CategoryValue;
   description: string | null;
-  sku: string | null;
+  productTypeId: string | null;
+  productTypeName: string | null;
+  productTypeCode: string | null;
   barcode: string | null;
   images: string[];
   variants: VariantDTO[];
@@ -46,6 +50,20 @@ export interface BrandDTO {
 
 export interface BrandInput {
   name: string;
+  category: CategoryValue;
+}
+
+// أنواع المنتجات
+export interface ProductTypeDTO {
+  id: string;
+  name: string;
+  code: string;
+  category: CategoryValue;
+}
+
+export interface ProductTypeInput {
+  name: string;
+  code: string;
   category: CategoryValue;
 }
 
@@ -80,6 +98,7 @@ export interface SaleItemDTO {
   productName: string;
   brand: string;
   size: string;
+  color?: string | null;
 }
 
 export interface SaleDTO {
@@ -93,6 +112,7 @@ export interface SaleDTO {
   customerName: string | null;
   customerPhone: string | null;
   customerNotes: string | null;
+  cashierName: string | null;
   paymentMethod: PaymentMethodValue;
   transferMethod: TransferMethodValue | null;
   invoiceNotes: string | null;
@@ -124,6 +144,8 @@ export interface DeliveryInput {
 export interface VariantInput {
   id?: string; // موجود عند التعديل، غير موجود عند الإضافة
   size: string;
+  color?: string | null;
+  sku?: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
@@ -135,7 +157,7 @@ export interface ProductInput {
   brand: string;
   category: CategoryValue;
   description?: string | null;
-  sku?: string | null;
+  productTypeId?: string | null;
   barcode?: string | null;
   images: string[];
   variants: VariantInput[];
@@ -146,8 +168,11 @@ export interface ImportRow {
   name: string;
   brand: string;
   category: CategoryValue;
+  productTypeName?: string | null;
   branch: BranchValue;
   size: string;
+  color?: string | null;
+  sku?: string | null;
   quantity: number;
   price: number;
 }
@@ -177,7 +202,25 @@ export interface SaleInput {
   transferMethod?: TransferMethodValue | null;
   invoiceNotes?: string | null;
   paidAmount?: number | null; // المبلغ المدفوع الآن (للدفع الجزئي)
+  cashierName?: string | null; // اسم الكاشير (من جلسة المستخدم)
   delivery?: DeliveryInput | null; // بيانات التوصيل (اختيارية)
+}
+
+// سجل النشاط
+export interface ActivityLogDTO {
+  id: string;
+  userName: string;
+  userRole: string;
+  action: string;
+  details: string | null;
+  createdAt: string;
+}
+
+export interface ActivityLogInput {
+  userName: string;
+  userRole: string;
+  action: string;
+  details?: string | null;
 }
 
 // إحصائيات لوحة التحكم — موحّدة (الرئيسية + التقارير)
@@ -217,6 +260,15 @@ export interface DashboardStats {
   }[];
   topBrand: { brand: string; qty: number; revenue: number } | null;
   newCustomersCount: number; // عملاء جدد في الفترة (لم يظهروا قبلها)
+
+  // أداء الكاشيرين خلال الفترة
+  cashierStats: {
+    name: string;
+    count: number;
+    total: number;
+    avgInvoice: number;
+    maxInvoice: number;
+  }[];
 
   // القسم 4 — التوصيل
   deliveryStats: {

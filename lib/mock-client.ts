@@ -12,6 +12,11 @@ import {
   mockHomeStats,
   mockListBrands,
   mockCreateBrand,
+  mockListProductTypes,
+  mockCreateProductType,
+  mockSeedProductTypes,
+  mockListActivity,
+  mockCreateActivity,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -23,10 +28,12 @@ import {
   mockUploadUrl,
 } from "./mock-store";
 import {
+  parseActivityInput,
   parseBrandInput,
   parseDeliveryStatus,
   parseImportRows,
   parseProductInput,
+  parseProductTypeInput,
   parseSaleInput,
 } from "./validate";
 
@@ -84,6 +91,25 @@ export async function mockApi<T>(
   if (path === "/api/brands") {
     if (method === "GET") return mockListBrands(sp.get("category")) as T;
     if (method === "POST") return mockCreateBrand(parseBrandInput(body)) as T;
+  }
+
+  // /api/product-types
+  if (path === "/api/product-types") {
+    if (method === "GET")
+      return mockListProductTypes(sp.get("category")) as T;
+    if (method === "POST")
+      return mockCreateProductType(parseProductTypeInput(body)) as T;
+  }
+
+  // /api/seed/product-types — زرع الأنواع الافتراضية
+  if (path === "/api/seed/product-types" && method === "POST")
+    return { ...mockSeedProductTypes(), mode: "mock" } as T;
+
+  // /api/activity
+  if (path === "/api/activity") {
+    if (method === "GET") return mockListActivity(sp) as T;
+    if (method === "POST")
+      return mockCreateActivity(parseActivityInput(body)) as T;
   }
 
   // /api/sales

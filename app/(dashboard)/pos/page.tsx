@@ -26,12 +26,17 @@ import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { Spinner, PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { NumberInput, PhoneInput, TextOnlyInput } from "@/components/ui/inputs";
+import { isValidEgyPhone } from "@/lib/input-validators";
+import { getCurrentUser } from "@/lib/auth";
+import { ACTIVITY_ACTIONS, logActivity } from "@/lib/activity-log";
 import { cn } from "@/lib/cn";
 import { calcDiscount, round2 } from "@/lib/sale-utils";
 import {
   formatCurrency,
   formatDateTime,
   formatNumber,
+  formatSaleNumber,
 } from "@/lib/format";
 import {
   BRANCHES,
@@ -44,6 +49,7 @@ import {
   PAYMENT_METHOD_LABELS,
   TRANSFER_METHODS,
   TRANSFER_METHOD_LABELS,
+  colorMeta,
   type BranchValue,
   type DeliveryMethodValue,
   type DiscountTypeValue,
@@ -59,6 +65,8 @@ interface CartItem {
   productName: string;
   brand: string;
   size: string;
+  color: string | null;
+  sku: string | null;
   unitPrice: number;
   available: number;
   quantity: number;
@@ -239,6 +247,8 @@ function PosRegister({
           productName: product.name,
           brand: product.brand,
           size: variant.size,
+          color: variant.color ?? null,
+          sku: variant.sku ?? null,
           unitPrice: variant.price,
           available: variant.quantity,
           quantity: 1,
@@ -389,6 +399,8 @@ function PosRegister({
     if (cart.length === 0) return toast.error("الفاتورة فارغة");
     if (paymentMethod === "TRANSFER" && !transferMethod)
       return toast.error("اختر طريقة التحويل");
+    if (customerPhone && !isValidEgyPhone(customerPhone))
+      return toast.error("رقم الهاتف غير مكتمل — يجب أن يتكوّن من 11 رقم");
     if (deliveryOn) {
       if (!orderSource) return toast.error("اختر مصدر الطلب");
       if (!deliveryMethod) return toast.error("اختر طريقة التوصيل");
@@ -407,6 +419,7 @@ function PosRegister({
         customerName: customerName || null,
         customerPhone: customerPhone || null,
         customerNotes: customerNotes || null,
+        cashierName: getCurrentUser()?.name ?? null,
         invoiceNotes: invoiceNotes || null,
         paymentMethod,
         transferMethod: paymentMethod === "TRANSFER" ? transferMethod : null,
@@ -426,6 +439,10 @@ function PosRegister({
             : null,
       });
       setReceipt(sale);
+      void logActivity(
+        ACTIVITY_ACTIONS.CREATE_SALE,
+        `فاتورة ${formatSaleNumber(sale.saleNumber)} — ${formatCurrency(sale.finalAmount)}`
+      );
       resetSale();
       refetch();
     } catch (e) {
@@ -528,24 +545,38 @@ function PosRegister({
                           <p className="text-xs text-muted">{p.brand}</p>
                         </div>
                         <div className="flex flex-wrap justify-end gap-1">
-                          {p.variants.slice(0, 4).map((v) => (
-                            <button
-                              key={v.id}
-                              disabled={v.quantity <= 0}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                addVariant(p, v);
-                              }}
-                              className={cn(
-                                "rounded border px-1.5 py-0.5 text-[11px] nums",
-                                v.quantity <= 0
-                                  ? "text-muted line-through opacity-50"
-                                  : "hover:border-accent hover:text-accent"
-                              )}
-                            >
-                              {v.size}({v.quantity})
-                            </button>
-                          ))}
+                          {p.variants.slice(0, 4).map((v) => {
+                            const cm = colorMeta(v.color);
+                            return (
+                              <button
+                                key={v.id}
+                                disabled={v.quantity <= 0}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  addVariant(p, v);
+                                }}
+                                title={
+                                  cm ? `${v.size} - ${cm.name}` : v.size
+                                }
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px]",
+                                  v.quantity <= 0
+                                    ? "text-muted line-through opacity-50"
+                                    : "hover:border-accent hover:text-accent"
+                                )}
+                              >
+                                {cm && (
+                                  <span
+                                    className="inline-block h-2 w-2 rounded-full border"
+                                    style={{ backgroundColor: cm.hex }}
+                                  />
+                                )}
+                                <span className="nums">
+                                  {v.size}({v.quantity})
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -624,15 +655,29 @@ function PosRegister({
               </div>
             ) : (
               <div className="max-h-[36vh] space-y-2 overflow-y-auto pl-1">
-                {cart.map((item) => (
+                {cart.map((item) => {
+                  const cMeta = colorMeta(item.color);
+                  return (
                   <div key={item.variantId} className="rounded-lg border bg-bg p-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-text">
                           {item.productName}
                         </p>
-                        <p className="text-xs text-muted">
-                          مقاس {item.size} · {formatCurrency(item.unitPrice)}
+                        <p className="flex items-center gap-1.5 text-xs text-muted">
+                          <span className="nums">مقاس {item.size}</span>
+                          {cMeta && (
+                            <>
+                              <span>·</span>
+                              <span
+                                className="inline-block h-3 w-3 rounded-full border"
+                                style={{ backgroundColor: cMeta.hex }}
+                              />
+                              <span>{cMeta.name}</span>
+                            </>
+                          )}
+                          <span>·</span>
+                          <span className="nums">{formatCurrency(item.unitPrice)}</span>
                         </p>
                       </div>
                       <button
@@ -652,15 +697,13 @@ function PosRegister({
                         >
                           <Minus className="h-4 w-4" />
                         </button>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          min={1}
+                        <NumberInput
+                          value={String(item.quantity)}
                           max={item.available}
-                          onChange={(e) =>
-                            setQty(item.variantId, Number(e.target.value))
+                          onChange={(v) =>
+                            setQty(item.variantId, Number(v) || 1)
                           }
-                          className="input h-10 w-16 px-1 text-center nums"
+                          className="input h-10 w-16 px-1 text-center"
                         />
                         <button
                           onClick={() => setQty(item.variantId, item.quantity + 1)}
@@ -676,7 +719,8 @@ function PosRegister({
                       </span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -686,18 +730,13 @@ function PosRegister({
                 بيانات العميل (اختياري)
               </summary>
               <div className="space-y-2 border-t p-3">
-                <input
+                <TextOnlyInput
                   className="input"
                   placeholder="اسم العميل"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={setCustomerName}
                 />
-                <input
-                  className="input"
-                  placeholder="رقم الهاتف"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                />
+                <PhoneInput value={customerPhone} onChange={setCustomerPhone} />
                 <textarea
                   className="input min-h-[56px] resize-y"
                   placeholder="ملاحظات العميل"
@@ -778,13 +817,15 @@ function PosRegister({
                   <option value="FIXED">مبلغ ثابت</option>
                 </select>
                 {discountType !== "NONE" && (
-                  <input
-                    type="number"
-                    min={0}
-                    className="input nums"
-                    placeholder={discountType === "PERCENTAGE" ? "% النسبة" : "المبلغ"}
+                  <NumberInput
+                    className="input"
+                    allowDecimal
+                    max={discountType === "PERCENTAGE" ? 100 : undefined}
+                    placeholder={
+                      discountType === "PERCENTAGE" ? "% النسبة" : "المبلغ"
+                    }
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
+                    onChange={setDiscountValue}
                   />
                 )}
               </div>
@@ -852,11 +893,11 @@ function PosRegister({
                       <label className="mb-1 block text-xs text-muted">
                         رقم التتبع (Bosta)
                       </label>
-                      <input
-                        className="input nums"
-                        placeholder="مثال: BST-1234567"
+                      <NumberInput
+                        className="input"
+                        placeholder="أدخل أرقام التتبع فقط"
                         value={trackingNumber}
-                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        onChange={setTrackingNumber}
                       />
                     </div>
                   )}
@@ -903,13 +944,12 @@ function PosRegister({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div>
                     <span className="mb-1 block text-xs text-muted">المبلغ المدفوع</span>
-                    <input
-                      type="number"
-                      min={0}
+                    <NumberInput
+                      className="input"
+                      allowDecimal
                       max={finalAmount}
-                      className="input nums"
                       value={paidInput}
-                      onChange={(e) => setPaidInput(e.target.value)}
+                      onChange={setPaidInput}
                     />
                   </div>
                   <div>
@@ -1099,7 +1139,7 @@ function SearchResult({
           <p className="truncate text-sm font-bold text-text">{product.name}</p>
           <p className="text-xs text-muted">
             {product.brand}
-            {product.sku ? ` · ${product.sku}` : ""}
+            {product.productTypeName ? ` · ${product.productTypeName}` : ""}
           </p>
         </div>
       </div>
@@ -1109,22 +1149,34 @@ function SearchResult({
           const inCart = cart.find((c) => c.variantId === v.id)?.quantity ?? 0;
           const out = v.quantity <= 0;
           const maxed = inCart >= v.quantity;
+          const cm = colorMeta(v.color);
           return (
             <button
               key={v.id}
               disabled={out || maxed}
               onClick={() => onAdd(product, v)}
-              title={out ? "نفذت الكمية" : `المتاح: ${v.quantity}`}
+              title={
+                cm
+                  ? `${v.size} - ${cm.name}${out ? " (نفذت)" : ` (${v.quantity})`}${v.sku ? ` - ${v.sku}` : ""}`
+                  : `${v.size}${out ? " (نفذت)" : ` (${v.quantity})`}${v.sku ? ` - ${v.sku}` : ""}`
+              }
               className={cn(
-                "inline-flex min-h-[44px] min-w-[3.5rem] items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                "inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
                 out
                   ? "cursor-not-allowed text-muted line-through opacity-60"
                   : "hover:border-accent hover:bg-accent-soft hover:text-accent active:bg-accent-soft",
                 inCart > 0 && !out && "border-accent bg-accent-soft text-accent"
               )}
             >
+              {cm && (
+                <span
+                  className="inline-block h-3 w-3 rounded-full border"
+                  style={{ backgroundColor: cm.hex }}
+                />
+              )}
               <span className="nums">{v.size}</span>
-              <span className="mr-1 text-xs text-muted nums">
+              {cm && <span className="text-[11px] text-muted">{cm.name}</span>}
+              <span className="text-xs text-muted nums">
                 ({out ? "نفذ" : v.quantity})
               </span>
             </button>

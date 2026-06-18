@@ -48,6 +48,7 @@ function receiptText(sale: SaleDTO): string {
       ? [`المتبقي: ${formatCurrency(sale.remainingAmount)}`]
       : []),
     ...(sale.customerName ? [`العميل: ${sale.customerName}`] : []),
+    ...(sale.cashierName ? [`الكاشير: ${sale.cashierName}`] : []),
     "شكراً لتسوقكم من Euro Brands",
   ];
   return lines.join("\n");
@@ -131,6 +132,13 @@ export function ReceiptModal({
             <span className="text-text">{sale.customerName}</span>
           )}
         </div>
+
+        {sale.cashierName && (
+          <div className="flex items-center justify-between pb-2 text-xs text-muted">
+            <span>الكاشير</span>
+            <span className="text-text">{sale.cashierName}</span>
+          </div>
+        )}
 
         <div className="space-y-1.5 border-y py-3">
           {sale.items.map((it) => (
