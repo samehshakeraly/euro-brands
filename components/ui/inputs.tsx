@@ -143,7 +143,6 @@ export function PhoneInput({
 
   const { prefix, rest } = useMemo(() => splitEgyPhone(value), [value]);
   const label = egyPhoneLabel(prefix);
-  const composed = composeEgyPhone(prefix, rest);
 
   return (
     <div className={className}>
@@ -175,7 +174,8 @@ export function PhoneInput({
       {showHint && (
         <p className="mt-1 text-xs text-muted nums">
           {label ? `${label} · ` : ""}
-          {composed || `${prefix}________`}
+          {prefix}
+          {rest.padEnd(8, "_")}
         </p>
       )}
     </div>

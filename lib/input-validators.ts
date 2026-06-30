@@ -138,7 +138,7 @@ export function splitEgyPhone(
 export function composeEgyPhone(prefix: string, rest: string): string {
   const cleanPrefix = digitsOnly(prefix).slice(0, 3);
   const cleanRest = digitsOnly(rest).slice(0, 8);
-  if (!cleanRest) return "";
+  if (!cleanPrefix) return "";
   return cleanPrefix + cleanRest;
 }
 
