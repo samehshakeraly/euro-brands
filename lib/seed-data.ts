@@ -4,6 +4,7 @@ import {
   Branch,
   DiscountType,
 } from "@prisma/client";
+import { DEFAULT_PRODUCT_TYPES } from "./constants";
 
 // منطق تعبئة البيانات التجريبية — مشترك بين سكربت CLI ومسار /api/seed.
 // يحذف البيانات السابقة ثم ينشئ 5 منتجات على الفرعين + فاتورتين.
@@ -18,15 +19,13 @@ export async function runSeed(
   await prisma.brand.deleteMany();
   await prisma.productType.deleteMany();
 
-  // أنواع تجريبية لكل فئة — الكود يدخل في SKU التلقائي للأصناف
+  // أنواع المنتجات الافتراضية الموحّدة — الكود يدخل في SKU التلقائي للأصناف
   await prisma.productType.createMany({
-    data: [
-      { name: "تيشيرت", code: "TSH", category: Category.CLOTHES },
-      { name: "قميص", code: "SHR", category: Category.CLOTHES },
-      { name: "حذاء رياضي", code: "SNK", category: Category.SHOES },
-      { name: "جينز", code: "JNS", category: Category.PANTS },
-      { name: "عطر شرقي", code: "PFM", category: Category.PERFUMES },
-    ],
+    data: DEFAULT_PRODUCT_TYPES.map((t) => ({
+      name: t.name,
+      code: t.code,
+      category: t.category as Category,
+    })),
   });
 
   const products = [

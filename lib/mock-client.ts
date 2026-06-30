@@ -15,6 +15,7 @@ import {
   mockListProductTypes,
   mockCreateProductType,
   mockDeleteProductType,
+  mockSeedProductTypes,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -95,6 +96,11 @@ export async function mockApi<T>(
     if (method === "GET") return mockListProductTypes(sp.get("category")) as T;
     if (method === "POST")
       return mockCreateProductType(parseProductTypeInput(body)) as T;
+  }
+
+  // /api/seed/product-types — مزامنة الأنواع الافتراضية (idempotent)
+  if (path === "/api/seed/product-types" && method === "POST") {
+    return mockSeedProductTypes() as T;
   }
 
   // /api/product-types/[id]

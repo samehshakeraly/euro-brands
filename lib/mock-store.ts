@@ -9,7 +9,9 @@ import {
 import { calcDiscount, round2 } from "./sale-utils";
 import {
   BRANCHES,
+  DEFAULT_PRODUCT_TYPES,
   LOW_STOCK_THRESHOLD,
+  RENAMED_PRODUCT_TYPES,
   type BranchValue,
   type CategoryValue,
   type DeliveryMethodValue,
@@ -1126,9 +1128,62 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
 }
 
 // ----- أنواع المنتجات -----
+// مزامنة أنواع المنتجات في الذاكرة مع القائمة الافتراضية الموحّدة — بنفس منطق
+// مسار /api/seed/product-types: idempotent، تُضيف الناقص وتُحدّث الأكواد فقط،
+// ولا تحذف أنواع المستخدم، وتُهاجر الأنواع المُعاد تسميتها (بلوزة → قميص).
+export function mockSeedProductTypes(): {
+  added: number;
+  updated: number;
+  total: number;
+  mode: "mock";
+} {
+  let added = 0;
+  let updated = 0;
+
+  for (const def of DEFAULT_PRODUCT_TYPES) {
+    const found = store.productTypes.find(
+      (t) => t.name === def.name && t.category === def.category
+    );
+    if (!found) {
+      store.productTypes.push({
+        id: nextId("pt"),
+        name: def.name,
+        code: def.code,
+        category: def.category,
+      });
+      added++;
+    } else if (found.code !== def.code) {
+      found.code = def.code;
+      updated++;
+    }
+  }
+
+  // هجرة الأنواع المُعاد تسميتها: إعادة ربط المنتجات بالنوع البديل ثم حذف القديم
+  for (const ren of RENAMED_PRODUCT_TYPES) {
+    const fromIdx = store.productTypes.findIndex(
+      (t) => t.name === ren.from && t.category === ren.category
+    );
+    if (fromIdx === -1) continue;
+    const fromType = store.productTypes[fromIdx];
+    const target = store.productTypes.find(
+      (t) => t.name === ren.to && t.category === ren.category
+    );
+    if (target) {
+      for (const p of store.products) {
+        if (p.productTypeId === fromType.id) p.productTypeId = target.id;
+      }
+    }
+    store.productTypes.splice(fromIdx, 1);
+  }
+
+  return { added, updated, total: store.productTypes.length, mode: "mock" };
+}
+
 export function mockListProductTypes(
   category?: string | null
 ): ProductTypeDTO[] {
+  // مزامنة تلقائية مع أحدث الأنواع الافتراضية عند فتح القائمة (دون إعادة تشغيل)
+  mockSeedProductTypes();
   return store.productTypes
     .filter((t) => !category || t.category === category)
     .map(shapeProductType)
