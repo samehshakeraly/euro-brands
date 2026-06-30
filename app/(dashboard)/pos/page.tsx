@@ -20,6 +20,8 @@ import {
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiPost } from "@/lib/client";
+import { getSession } from "@/lib/auth";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { ReceiptModal } from "@/components/receipt-modal";
 import { Modal } from "@/components/ui/modal";
@@ -38,6 +40,7 @@ import {
   formatCurrency,
   formatDateTime,
   formatNumber,
+  formatSaleNumber,
 } from "@/lib/format";
 import {
   BRANCHES,
@@ -423,6 +426,7 @@ function PosRegister({
         paymentMethod,
         transferMethod: paymentMethod === "TRANSFER" ? transferMethod : null,
         paidAmount: partialOn ? paidAmount : null,
+        cashierName: getSession()?.name ?? null,
         delivery:
           deliveryOn && orderSource && deliveryMethod
             ? {
@@ -438,6 +442,12 @@ function PosRegister({
             : null,
       });
       setReceipt(sale);
+      void logActivity(
+        ACTIVITY_ACTIONS.CREATE_SALE,
+        `فاتورة ${formatSaleNumber(sale.saleNumber)} — ${formatCurrency(
+          sale.finalAmount
+        )}`
+      );
       resetSale();
       refetch();
     } catch (e) {

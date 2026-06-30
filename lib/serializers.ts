@@ -1,4 +1,5 @@
 import type {
+  ActivityLog,
   Brand,
   Product,
   ProductType,
@@ -8,6 +9,7 @@ import type {
 } from "@prisma/client";
 import type { BranchValue, CategoryValue } from "./constants";
 import type {
+  ActivityLogDTO,
   BrandDTO,
   ProductDTO,
   ProductTypeDTO,
@@ -17,6 +19,17 @@ import type {
 
 export function toBrandDTO(b: Brand): BrandDTO {
   return { id: b.id, name: b.name, category: b.category as CategoryValue };
+}
+
+export function toActivityDTO(a: ActivityLog): ActivityLogDTO {
+  return {
+    id: a.id,
+    userName: a.userName,
+    userRole: a.userRole,
+    action: a.action,
+    details: a.details ?? null,
+    createdAt: a.createdAt.toISOString(),
+  };
 }
 
 export function toProductTypeDTO(t: ProductType): ProductTypeDTO {
@@ -95,6 +108,7 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
     invoiceNotes: s.invoiceNotes,
     paidAmount: s.paidAmount,
     remainingAmount: s.remainingAmount,
+    cashierName: s.cashierName ?? null,
     status: s.status as SaleDTO["status"],
     cancellationReason: s.cancellationReason,
     isDelivery: s.isDelivery,

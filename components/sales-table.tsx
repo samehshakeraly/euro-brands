@@ -22,6 +22,7 @@ export function SalesTable({
               <th className="px-3 py-3 font-medium">التاريخ</th>
               <th className="px-3 py-3 font-medium">الفرع</th>
               <th className="px-3 py-3 font-medium">العميل</th>
+              <th className="px-3 py-3 font-medium">الكاشير</th>
               <th className="px-3 py-3 font-medium">الإجمالي</th>
               <th className="px-3 py-3 font-medium">الخصم</th>
               <th className="px-3 py-3 font-medium">الصافي</th>
@@ -49,6 +50,9 @@ export function SalesTable({
                     {sale.customerName || (
                       <span className="text-muted">عميل عابر</span>
                     )}
+                  </td>
+                  <td className="px-3 py-3 text-text">
+                    {sale.cashierName || <span className="text-muted">—</span>}
                   </td>
                   <td className="px-3 py-3 text-text nums">
                     {formatCurrency(sale.totalAmount)}
@@ -109,6 +113,11 @@ export function SalesTable({
                   <span className="text-muted nums"> · {sale.customerPhone}</span>
                 )}
               </p>
+              {sale.cashierName && (
+                <p className="mt-1 text-xs text-muted">
+                  الكاشير: {sale.cashierName}
+                </p>
+              )}
 
               <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center text-sm">
                 <div>

@@ -19,6 +19,7 @@ import { NumberInput, TextOnlyInput } from "@/components/ui/inputs";
 import { AddBrandModal } from "@/components/add-brand-modal";
 import { AddProductTypeModal } from "@/components/add-product-type-modal";
 import { apiPost, apiPut, uploadImage } from "@/lib/client";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { useFetch } from "@/lib/use-fetch";
 import { buildVariantSku } from "@/lib/sku";
 import type {
@@ -286,9 +287,11 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     try {
       if (isEdit) {
         await apiPut(`/api/products/${initial!.id}`, payload);
+        void logActivity(ACTIVITY_ACTIONS.UPDATE_PRODUCT, payload.name);
         toast.success("تم حفظ التعديلات");
       } else {
         await apiPost("/api/products", payload);
+        void logActivity(ACTIVITY_ACTIONS.CREATE_PRODUCT, payload.name);
         toast.success("تمت إضافة المنتج");
       }
       router.push("/inventory");

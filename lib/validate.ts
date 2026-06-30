@@ -16,6 +16,7 @@ import {
   type TransferMethodValue,
 } from "./constants";
 import type {
+  ActivityLogInput,
   BrandInput,
   DeliveryInput,
   ImportRow,
@@ -252,7 +253,25 @@ export function parseSaleInput(body: any): SaleInput {
     transferMethod,
     invoiceNotes: asString(body?.invoiceNotes) || null,
     paidAmount,
+    cashierName: asString(body?.cashierName) || null,
     delivery,
+  };
+}
+
+// التحقق من مدخلات سجل النشاط
+export function parseActivityInput(body: any): ActivityLogInput {
+  const userName = asString(body?.userName);
+  const userRole = asString(body?.userRole);
+  const action = asString(body?.action);
+  if (!userName) throw new ValidationError("اسم المستخدم مطلوب");
+  if (userRole !== "ADMIN" && userRole !== "CASHIER")
+    throw new ValidationError("الدور غير صحيح");
+  if (!action) throw new ValidationError("الإجراء مطلوب");
+  return {
+    userName,
+    userRole,
+    action,
+    details: asString(body?.details) || null,
   };
 }
 

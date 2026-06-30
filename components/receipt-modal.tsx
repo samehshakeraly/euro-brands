@@ -43,6 +43,7 @@ function receiptText(sale: SaleDTO): string {
     ...(discount > 0 ? [`الخصم: ${formatCurrency(discount)}`] : []),
     `الصافي: ${formatCurrency(sale.finalAmount)}`,
     `طريقة الدفع: ${paymentLabel(sale)}`,
+    ...(sale.cashierName ? [`الكاشير: ${sale.cashierName}`] : []),
     `المدفوع: ${formatCurrency(sale.paidAmount)}`,
     ...(sale.remainingAmount > 0
       ? [`المتبقي: ${formatCurrency(sale.remainingAmount)}`]
@@ -169,6 +170,12 @@ export function ReceiptModal({
             <span>طريقة الدفع</span>
             <span>{paymentLabel(sale)}</span>
           </div>
+          {sale.cashierName && (
+            <div className="flex justify-between text-muted">
+              <span>الكاشير</span>
+              <span>{sale.cashierName}</span>
+            </div>
+          )}
           <div className="flex justify-between text-success">
             <span>المدفوع</span>
             <span className="nums">{formatCurrency(sale.paidAmount)}</span>

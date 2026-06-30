@@ -167,6 +167,10 @@ export async function GET(req: Request) {
       { name: string; phone: string | null; total: number; count: number }
     >();
     const paymentMap = new Map<PaymentKey, { total: number; count: number }>();
+    const cashierMap = new Map<
+      string,
+      { count: number; total: number; max: number }
+    >();
 
     let rangeTotal = 0;
     let grossSales = 0;
@@ -201,6 +205,16 @@ export async function GET(req: Request) {
       const b = branchMap.get(sale.branch as BranchValue)!;
       b.total += sale.finalAmount;
       b.count += 1;
+
+      // أداء الكاشير
+      const cashier = (sale.cashierName ?? "").trim();
+      if (cashier) {
+        const cs = cashierMap.get(cashier) ?? { count: 0, total: 0, max: 0 };
+        cs.count += 1;
+        cs.total += sale.finalAmount;
+        if (sale.finalAmount > cs.max) cs.max = sale.finalAmount;
+        cashierMap.set(cashier, cs);
+      }
 
       const key = format(sale.createdAt, "yyyy-MM-dd");
       if (dayBuckets.has(key))
@@ -376,6 +390,16 @@ export async function GET(req: Request) {
           ? round2((returnedCount / deliveryCount) * 100)
           : 0,
       },
+
+      cashierStats: [...cashierMap.entries()]
+        .map(([name, v]) => ({
+          name,
+          count: v.count,
+          total: round2(v.total),
+          avgInvoice: v.count ? round2(v.total / v.count) : 0,
+          maxInvoice: round2(v.max),
+        }))
+        .sort((a, b) => b.total - a.total),
 
       grossSales: round2(grossSales),
       discountTotal: round2(grossSales - rangeTotal),

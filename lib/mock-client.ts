@@ -16,6 +16,8 @@ import {
   mockCreateProductType,
   mockDeleteProductType,
   mockSeedProductTypes,
+  mockListActivity,
+  mockCreateActivity,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -27,6 +29,7 @@ import {
   mockUploadUrl,
 } from "./mock-store";
 import {
+  parseActivityInput,
   parseBrandInput,
   parseDeliveryStatus,
   parseImportRows,
@@ -101,6 +104,13 @@ export async function mockApi<T>(
   // /api/seed/product-types — مزامنة الأنواع الافتراضية (idempotent)
   if (path === "/api/seed/product-types" && method === "POST") {
     return mockSeedProductTypes() as T;
+  }
+
+  // /api/activity — سجل النشاط
+  if (path === "/api/activity") {
+    if (method === "GET") return mockListActivity(sp) as T;
+    if (method === "POST")
+      return mockCreateActivity(parseActivityInput(body)) as T;
   }
 
   // /api/product-types/[id]

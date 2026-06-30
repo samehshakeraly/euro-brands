@@ -2,16 +2,15 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Logo } from "@/components/logo";
 import { isSessionValid, tryLogin } from "@/lib/auth";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={<div className="min-h-screen bg-bg" />}
-    >
+    <Suspense fallback={<div className="min-h-screen bg-bg" />}>
       <LoginInner />
     </Suspense>
   );
@@ -22,6 +21,7 @@ function LoginInner() {
   const search = useSearchParams();
   const next = search?.get("next") || "/";
 
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,15 +34,17 @@ function LoginInner() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!password) return;
+    if (!name.trim() || !password) return;
     setBusy(true);
     setError(null);
     try {
-      const ok = await tryLogin(password);
-      if (!ok) {
-        setError("كلمة المرور غير صحيحة");
+      const result = tryLogin(name, password);
+      if (!result.ok) {
+        setError(result.error || "كلمة المرور غير صحيحة");
         return;
       }
+      // سجّل دخول المستخدم (لا يُعيق التوجيه)
+      void logActivity(ACTIVITY_ACTIONS.LOGIN, null);
       router.replace(next);
     } finally {
       setBusy(false);
@@ -55,12 +57,26 @@ function LoginInner() {
         <div className="flex flex-col items-center">
           <Logo size={120} className="rounded-full" />
           <h1 className="mt-4 text-xl font-extrabold text-text">Euro Brands</h1>
-          <p className="mt-1 text-sm text-muted">
-            نظام إدارة المخزون والمبيعات
-          </p>
+          <p className="mt-1 text-sm text-muted">نظام إدارة المخزون والمبيعات</p>
         </div>
 
         <form onSubmit={submit} className="mt-6 space-y-4">
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <User className="h-4 w-4 text-muted" />
+              الاسم
+            </label>
+            <input
+              autoFocus
+              type="text"
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="اكتب اسمك"
+              aria-invalid={!!error}
+            />
+          </div>
+
           <div>
             <label className="label flex items-center gap-1.5">
               <Lock className="h-4 w-4 text-muted" />
@@ -68,7 +84,6 @@ function LoginInner() {
             </label>
             <div className="relative">
               <input
-                autoFocus
                 type={show ? "text" : "password"}
                 className="input pr-3 pl-10 nums"
                 value={password}
@@ -82,7 +97,11 @@ function LoginInner() {
                 className="absolute left-2 top-1/2 -translate-y-1/2 text-muted hover:text-text"
                 aria-label={show ? "إخفاء" : "إظهار"}
               >
-                {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {show ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
               </button>
             </div>
             {error && (
@@ -92,7 +111,7 @@ function LoginInner() {
 
           <button
             type="submit"
-            disabled={busy || !password}
+            disabled={busy || !name.trim() || !password}
             className="btn btn-primary h-11 w-full text-base"
           >
             {busy && <Spinner className="h-4 w-4" />}

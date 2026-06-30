@@ -187,6 +187,7 @@ export async function POST(req: Request) {
               invoiceNotes: input.invoiceNotes ?? null,
               paidAmount: round2(paidAmount),
               remainingAmount,
+              cashierName: input.cashierName ?? null,
               isDelivery: !!input.delivery,
               orderSource:
                 (input.delivery?.orderSource as OrderSource | undefined) ??

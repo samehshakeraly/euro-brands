@@ -160,6 +160,7 @@ model Sale {
   invoiceNotes    String? // ملاحظات على الفاتورة (مستقلة عن ملاحظات العميل)
   paidAmount      Float         @default(0) // المبلغ المدفوع
   remainingAmount Float         @default(0) // المبلغ المتبقي
+  cashierName     String? // اسم الكاشير الذي أنشأ الفاتورة
 
   status             SaleStatus @default(COMPLETED)
   cancellationReason String? // سبب الإلغاء
@@ -200,4 +201,17 @@ model SaleItem {
 
   @@index([saleId])
   @@index([productId])
+}
+
+// سجل نشاط المستخدمين (تسجيل دخول، إنشاء/إلغاء فاتورة، عمليات المنتجات، التوصيل)
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userName  String
+  userRole  String // ADMIN / CASHIER
+  action    String // وصف الإجراء بالعربية
+  details   String? // تفاصيل إضافية (اختياري)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userName])
 }

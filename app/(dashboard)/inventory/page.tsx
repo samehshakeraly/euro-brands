@@ -18,6 +18,7 @@ import {
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiDelete, apiPost } from "@/lib/client";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { ImportInventoryModal } from "@/components/import-inventory-modal";
 import { AddBrandModal } from "@/components/add-brand-modal";
 import { PageHeader } from "@/components/ui/page-header";
@@ -133,6 +134,7 @@ export default function InventoryPage() {
     setDeleting(true);
     try {
       await apiDelete(`/api/products/${toDelete.id}`);
+      void logActivity(ACTIVITY_ACTIONS.DELETE_PRODUCT, toDelete.name);
       toast.success("تم حذف المنتج بنجاح");
       setToDelete(null);
       refetch();

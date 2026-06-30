@@ -16,6 +16,7 @@ import { startOfDay, endOfDay } from "date-fns";
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiPost } from "@/lib/client";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, StatCard } from "@/components/ui/card";
 import { PageLoader } from "@/components/ui/spinner";
@@ -112,6 +113,10 @@ export default function DeliveryPage() {
     setUpdating(id);
     try {
       await apiPost(`/api/delivery/${id}/status`, { status: newStatus });
+      void logActivity(
+        ACTIVITY_ACTIONS.DELIVERY_STATUS,
+        DELIVERY_STATUS_LABELS[newStatus]
+      );
       toast.success(
         `تم تحديث الحالة إلى ${DELIVERY_STATUS_LABELS[newStatus]}`
       );

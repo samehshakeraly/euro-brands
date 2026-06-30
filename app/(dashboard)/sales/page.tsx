@@ -19,6 +19,7 @@ import { startOfDay, endOfDay } from "date-fns";
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiPost } from "@/lib/client";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, StatCard } from "@/components/ui/card";
 import { PageLoader, Spinner } from "@/components/ui/spinner";
@@ -114,6 +115,12 @@ export default function SalesPage() {
       await apiPost(`/api/sales/${cancelTarget.id}/cancel`, {
         reason: cancelReason,
       });
+      void logActivity(
+        ACTIVITY_ACTIONS.CANCEL_SALE,
+        `فاتورة ${formatSaleNumber(cancelTarget.saleNumber)}${
+          cancelReason ? ` — ${cancelReason}` : ""
+        }`
+      );
       toast.success("تم إلغاء الفاتورة وإعادة الكميات للمخزون");
       setCancelTarget(null);
       setCancelReason("");
