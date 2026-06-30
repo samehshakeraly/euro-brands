@@ -36,7 +36,7 @@ function receiptText(sale: SaleDTO): string {
     "----------------------------",
     ...sale.items.map(
       (it) =>
-        `${it.productName} (${it.size}) ×${it.quantity} = ${formatCurrency(it.subtotal)}`
+        `${it.productName} (${it.size}${it.color ? `/${it.color}` : ""}) ×${it.quantity} = ${formatCurrency(it.subtotal)}`
     ),
     "----------------------------",
     `الإجمالي: ${formatCurrency(sale.totalAmount)}`,
@@ -137,7 +137,11 @@ export function ReceiptModal({
             <div key={it.id} className="flex justify-between gap-2 text-sm">
               <span className="min-w-0 truncate text-text">
                 {it.productName}{" "}
-                <span className="text-muted nums">({it.size}) ×{it.quantity}</span>
+                <span className="text-muted">
+                  (<span className="nums">{it.size}</span>
+                  {it.color ? `/${it.color}` : ""}) ×
+                  <span className="nums">{it.quantity}</span>
+                </span>
               </span>
               <span className="shrink-0 text-text nums">
                 {formatCurrency(it.subtotal)}

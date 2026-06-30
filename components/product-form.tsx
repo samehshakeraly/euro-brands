@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload,
@@ -10,14 +10,22 @@ import {
   Save,
   Link2,
   Copy,
+  RefreshCw,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { AddBrandModal } from "@/components/add-brand-modal";
+import { AddProductTypeModal } from "@/components/add-product-type-modal";
 import { apiPost, apiPut, uploadImage } from "@/lib/client";
 import { useFetch } from "@/lib/use-fetch";
-import type { BrandDTO, ProductDTO, ProductInput } from "@/lib/types";
+import { buildVariantSku } from "@/lib/sku";
+import type {
+  BrandDTO,
+  ProductDTO,
+  ProductInput,
+  ProductTypeDTO,
+} from "@/lib/types";
 import {
   BRANCHES,
   BRANCH_LABELS,
@@ -33,9 +41,12 @@ interface VariantRow {
   id?: string;
   branch: BranchValue;
   size: string;
+  color: string;
   quantity: string;
   minQuantity: string;
   price: string;
+  sku: string;
+  skuManual: boolean;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -45,13 +56,15 @@ function emptyRow(branch: BranchValue = "HADAYEK"): VariantRow {
     clientId: uid(),
     branch,
     size: "",
+    color: "",
     quantity: "0",
     minQuantity: "5",
     price: "0",
+    sku: "",
+    skuManual: false,
   };
 }
 
-// حقل بعنوان يظهر على الموبايل فقط (العناوين تظهر كرؤوس أعمدة على سطح المكتب)
 function VariantField({
   label,
   children,
@@ -79,8 +92,10 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   const [category, setCategory] = useState<CategoryValue>(
     initial?.category ?? "CLOTHES"
   );
+  const [productTypeId, setProductTypeId] = useState<string>(
+    initial?.productTypeId ?? ""
+  );
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [sku, setSku] = useState(initial?.sku ?? "");
   const [barcode, setBarcode] = useState(initial?.barcode ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
   const [urlInput, setUrlInput] = useState("");
@@ -91,9 +106,12 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           id: v.id,
           branch: v.branch,
           size: v.size,
+          color: v.color ?? "",
           quantity: String(v.quantity),
           minQuantity: String(v.minQuantity ?? 5),
           price: String(v.price),
+          sku: v.sku ?? "",
+          skuManual: v.skuManual,
         }))
       : [emptyRow()]
   );
@@ -102,6 +120,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [brandModalOpen, setBrandModalOpen] = useState(false);
+  const [typeModalOpen, setTypeModalOpen] = useState(false);
 
   const sizeOptions = sizesForCategory(category);
 
@@ -110,6 +129,25 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     `/api/brands?category=${category}`
   );
   const brandOptions = (brandsData ?? []).map((b) => b.name);
+
+  // أنواع المنتجات حسب الفئة المحددة
+  const { data: typesData, refetch: refetchTypes } = useFetch<
+    ProductTypeDTO[]
+  >(`/api/product-types?category=${category}`);
+  const typeOptions = typesData ?? [];
+
+  // عند تغيير الفئة: إن لم يعد النوع المختار ينتمي لها، نمسحه
+  useEffect(() => {
+    if (
+      productTypeId &&
+      typesData &&
+      !typesData.some((t) => t.id === productTypeId)
+    ) {
+      setProductTypeId("");
+    }
+  }, [category, typesData, productTypeId]);
+
+  const selectedType = typeOptions.find((t) => t.id === productTypeId);
 
   async function uploadFiles(files: File[]) {
     for (const file of files) {
@@ -144,6 +182,19 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     );
   }
 
+  // SKU معاينة: ما سيُحفَظ تلقائياً لو لم يكتبه المستخدم يدوياً.
+  // يحتاج معرف المنتج، فعند الإنشاء نُظهر "—" بدلاً من تخمين خاطئ.
+  function previewSku(row: VariantRow): string {
+    if (!isEdit || !initial) return "—";
+    return buildVariantSku({
+      productId: initial.id,
+      typeCode: selectedType?.code ?? null,
+      size: row.size || "?",
+      branch: row.branch,
+      color: row.color || null,
+    });
+  }
+
   // نسخ كل الصفوف إلى الفرع الآخر
   function copyToOtherBranch() {
     setVariants((rows) => {
@@ -152,13 +203,22 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         const other: BranchValue =
           r.branch === "HADAYEK" ? "ZAHRAA" : "HADAYEK";
         const exists = rows.some(
-          (x) => x.size === r.size && x.branch === other
+          (x) =>
+            x.size === r.size && x.branch === other && x.color === r.color
         );
         const willAdd = additions.some(
-          (x) => x.size === r.size && x.branch === other
+          (x) =>
+            x.size === r.size && x.branch === other && x.color === r.color
         );
         if (r.size && !exists && !willAdd) {
-          additions.push({ ...r, clientId: uid(), id: undefined, branch: other });
+          additions.push({
+            ...r,
+            clientId: uid(),
+            id: undefined,
+            branch: other,
+            sku: "", // SKU جديد سيُولَّد على الخادم
+            skuManual: false,
+          });
         }
       }
       if (additions.length === 0) {
@@ -170,6 +230,14 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     });
   }
 
+  // إعادة توليد كل SKUs التلقائية (لا يمس الأكواد اليدوية)
+  function regenerateAutoSkus() {
+    setVariants((rows) =>
+      rows.map((r) => (r.skuManual ? r : { ...r, sku: "" }))
+    );
+    toast("سيُعاد توليد كل الأكواد التلقائية عند الحفظ");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return toast.error("اسم المنتج مطلوب");
@@ -179,9 +247,11 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
     const seen = new Set<string>();
     for (const r of variants) {
       if (!r.size) return toast.error("يجب اختيار المقاس في كل الصفوف");
-      const key = `${r.size}__${r.branch}`;
+      const key = `${r.size}__${r.branch}__${r.color.trim()}`;
       if (seen.has(key))
-        return toast.error(`تكرار للمقاس ${r.size} في نفس الفرع`);
+        return toast.error(
+          `تكرار للمقاس ${r.size}${r.color ? ` / ${r.color}` : ""} في نفس الفرع`
+        );
       seen.add(key);
     }
 
@@ -190,16 +260,19 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
       brand: brand.trim(),
       category,
       description: description.trim() || null,
-      sku: sku.trim() || null,
       barcode: barcode.trim() || null,
       images,
+      productTypeId: productTypeId || null,
       variants: variants.map((r) => ({
         id: r.id,
         branch: r.branch,
         size: r.size,
+        color: r.color.trim() || null,
         quantity: Math.max(0, Math.floor(Number(r.quantity) || 0)),
         minQuantity: Math.max(0, Math.floor(Number(r.minQuantity) || 0)),
         price: Math.max(0, Number(r.price) || 0),
+        sku: r.sku.trim() || null,
+        skuManual: r.skuManual,
       })),
     };
 
@@ -244,7 +317,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               value={category}
               onChange={(e) => {
                 setCategory(e.target.value as CategoryValue);
-                setBrand(""); // إعادة ضبط البراند عند تغيير الفئة
+                setBrand("");
               }}
             >
               {CATEGORIES.map((c) => (
@@ -255,7 +328,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
             </select>
           </div>
 
-          {/* البراند: قائمة منسدلة حسب الفئة + زر إضافة */}
+          {/* البراند */}
           <div>
             <label className="label">البراند *</label>
             <div className="flex gap-2">
@@ -291,38 +364,45 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
             )}
           </div>
 
+          {/* نوع المنتج */}
           <div>
-            <label className="label">كود المنتج (SKU)</label>
-            <input
-              className="input"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              placeholder="مثال: NK-001"
-            />
+            <label className="label">نوع المنتج</label>
+            <div className="flex gap-2">
+              <select
+                className="input"
+                value={productTypeId}
+                onChange={(e) => setProductTypeId(e.target.value)}
+              >
+                <option value="">— بدون نوع —</option>
+                {typeOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.code})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setTypeModalOpen(true)}
+                className="btn btn-secondary flex-shrink-0"
+                title="إضافة نوع جديد"
+              >
+                <Plus className="h-4 w-4" />
+                جديد
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              كود النوع يُستخدم بادئةً لتوليد SKU التلقائي لكل صنف.
+            </p>
           </div>
 
           <div>
             <label className="label">الباركود</label>
-            <div className="flex gap-2">
-              <input
-                className="input nums"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                placeholder="امسح أو أدخل الباركود"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  sku.trim()
-                    ? setBarcode(sku.trim())
-                    : toast.error("أدخل كود SKU أولاً")
-                }
-                className="btn btn-secondary flex-shrink-0 text-xs"
-                title="توليد الباركود من كود SKU"
-              >
-                من SKU
-              </button>
-            </div>
+            <input
+              className="input nums"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder="امسح أو أدخل الباركود"
+            />
           </div>
 
           <div className="sm:col-span-2">
@@ -337,10 +417,12 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         </div>
       </Card>
 
-      {/* الصور — منطقة سحب وإفلات */}
+      {/* الصور */}
       <Card className="p-5">
         <h2 className="mb-1 text-base font-bold text-text">صور المنتج</h2>
-        <p className="mb-4 text-xs text-muted">حتى 3 صور — اسحب وأفلت أو اختر ملفاً</p>
+        <p className="mb-4 text-xs text-muted">
+          حتى 3 صور — اسحب وأفلت أو اختر ملفاً
+        </p>
 
         <div className="flex flex-wrap gap-3">
           {images.map((img, i) => (
@@ -419,18 +501,33 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 }}
               />
             </div>
-            <button type="button" className="btn btn-secondary h-[42px]" onClick={addUrl}>
+            <button
+              type="button"
+              className="btn btn-secondary h-[42px]"
+              onClick={addUrl}
+            >
               إضافة
             </button>
           </div>
         )}
       </Card>
 
-      {/* المقاسات والكميات */}
+      {/* المقاسات والألوان والكميات */}
       <Card className="p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-bold text-text">المقاسات والكميات</h2>
-          <div className="flex gap-2">
+          <h2 className="text-base font-bold text-text">
+            الأصناف — المقاسات والألوان والكميات
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary h-9 text-xs"
+              onClick={regenerateAutoSkus}
+              title="إعادة توليد كل أكواد SKU التلقائية عند الحفظ"
+            >
+              <RefreshCw className="h-4 w-4" />
+              توليد SKUs
+            </button>
             <button
               type="button"
               className="btn btn-secondary h-9 text-xs"
@@ -457,19 +554,21 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         </div>
 
         <div className="space-y-3">
-          <div className="hidden gap-3 px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[1.3fr_1fr_0.9fr_0.9fr_1.1fr_auto]">
+          <div className="hidden gap-2 px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[1.1fr_0.8fr_0.9fr_0.7fr_0.8fr_0.9fr_1.3fr_auto]">
             <span>الفرع</span>
             <span>المقاس</span>
+            <span>اللون</span>
             <span>الكمية</span>
             <span>الحد الأدنى</span>
-            <span>السعر (ج.م)</span>
+            <span>السعر</span>
+            <span>SKU</span>
             <span></span>
           </div>
 
           {variants.map((row) => (
             <div
               key={row.clientId}
-              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.3fr_1fr_0.9fr_0.9fr_1.1fr_auto] sm:items-start sm:border-0 sm:p-0"
+              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.1fr_0.8fr_0.9fr_0.7fr_0.8fr_0.9fr_1.3fr_auto] sm:items-start sm:border-0 sm:p-0"
             >
               <VariantField label="الفرع">
                 <select
@@ -478,6 +577,8 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   onChange={(e) =>
                     updateRow(row.clientId, {
                       branch: e.target.value as BranchValue,
+                      // إعادة توليد SKU عند تغيير ما يدخل فيه (إن لم يكن يدوياً)
+                      ...(row.skuManual ? {} : { sku: "" }),
                     })
                   }
                 >
@@ -494,7 +595,10 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   className="input"
                   value={row.size}
                   onChange={(e) =>
-                    updateRow(row.clientId, { size: e.target.value })
+                    updateRow(row.clientId, {
+                      size: e.target.value,
+                      ...(row.skuManual ? {} : { sku: "" }),
+                    })
                   }
                 >
                   <option value="">المقاس</option>
@@ -507,6 +611,20 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                     <option value={row.size}>{row.size}</option>
                   )}
                 </select>
+              </VariantField>
+
+              <VariantField label="اللون">
+                <input
+                  className="input"
+                  value={row.color}
+                  onChange={(e) =>
+                    updateRow(row.clientId, {
+                      color: e.target.value,
+                      ...(row.skuManual ? {} : { sku: "" }),
+                    })
+                  }
+                  placeholder="أحمر / أسود..."
+                />
               </VariantField>
 
               <VariantField label="الكمية">
@@ -546,6 +664,36 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 />
               </VariantField>
 
+              <VariantField label="كود الصنف (SKU)">
+                <div className="flex gap-1">
+                  <input
+                    className={`input nums ${row.skuManual ? "" : "text-muted"}`}
+                    value={row.sku}
+                    placeholder={
+                      row.skuManual ? "" : previewSku(row) || "تلقائي عند الحفظ"
+                    }
+                    onChange={(e) =>
+                      updateRow(row.clientId, {
+                        sku: e.target.value,
+                        skuManual: e.target.value.trim().length > 0,
+                      })
+                    }
+                  />
+                  {row.skuManual && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost h-[38px] flex-shrink-0 !px-2 text-muted"
+                      onClick={() =>
+                        updateRow(row.clientId, { sku: "", skuManual: false })
+                      }
+                      title="إعادة للتوليد التلقائي"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </VariantField>
+
               <button
                 type="button"
                 onClick={() =>
@@ -569,7 +717,11 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
       <div className="flex gap-3">
         <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? <Spinner className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+          {saving ? (
+            <Spinner className="h-4 w-4" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
           {isEdit ? "حفظ التعديلات" : "إضافة المنتج"}
         </button>
         <button
@@ -589,6 +741,16 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         onAdded={(b) => {
           setBrand(b.name);
           refetchBrands();
+        }}
+      />
+
+      <AddProductTypeModal
+        open={typeModalOpen}
+        category={category}
+        onClose={() => setTypeModalOpen(false)}
+        onAdded={(t) => {
+          setProductTypeId(t.id);
+          refetchTypes();
         }}
       />
     </form>
