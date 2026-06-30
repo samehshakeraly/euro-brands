@@ -44,7 +44,6 @@ interface Filters {
   category: string;
   brand: string;
   size: string;
-  image: "" | "with" | "without";
 }
 type SortKey = "newest" | "mostSold" | "lowestQty";
 
@@ -54,7 +53,6 @@ const EMPTY_FILTERS: Filters = {
   category: "",
   brand: "",
   size: "",
-  image: "",
 };
 
 export default function InventoryPage() {
@@ -112,8 +110,6 @@ export default function InventoryPage() {
         return false;
       if (filters.category && p.category !== filters.category) return false;
       if (filters.brand && p.brand !== filters.brand) return false;
-      if (filters.image === "with" && p.images.length === 0) return false;
-      if (filters.image === "without" && p.images.length > 0) return false;
       const variantMatch = p.variants.some(
         (v) =>
           (!filters.branch || v.branch === filters.branch) &&
@@ -291,21 +287,6 @@ export default function InventoryPage() {
                 {s}
               </option>
             ))}
-          </select>
-
-          <select
-            className="input"
-            value={filters.image}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                image: e.target.value as Filters["image"],
-              }))
-            }
-          >
-            <option value="">بصورة أو بدون</option>
-            <option value="with">بصورة</option>
-            <option value="without">بدون صورة</option>
           </select>
         </div>
 

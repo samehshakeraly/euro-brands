@@ -24,17 +24,19 @@ import {
 import { formatNumber } from "@/lib/format";
 import type { ImportResult, ImportRow, ProductDTO } from "@/lib/types";
 
+// ترتيب أعمدة القالب الجديد (أ→ي): اسم المنتج، البراند، الفئة، النوع، اللون،
+// المقاس، الفرع، الكمية، السعر، الكود (SKU).
 const HEADERS = [
-  "المنتج",
+  "اسم المنتج",
   "البراند",
   "الفئة",
   "النوع",
-  "الفرع",
-  "المقاس",
   "اللون",
+  "المقاس",
+  "الفرع",
   "الكمية",
   "السعر",
-  "SKU",
+  "الكود (SKU)",
 ];
 
 const CATEGORY_BY_LABEL = Object.fromEntries(
@@ -72,6 +74,15 @@ function pick(obj: Record<string, unknown>, header: string): unknown {
   return key ? obj[key] : "";
 }
 
+// قراءة العمود مع دعم أكثر من اسم رأس (الجديد + القديم) لإبقاء الملفات القديمة قابلة للاستيراد
+function pickAny(obj: Record<string, unknown>, ...headers: string[]): unknown {
+  for (const h of headers) {
+    const v = pick(obj, h);
+    if (norm(v) !== "") return v;
+  }
+  return "";
+}
+
 export function ImportInventoryModal({
   open,
   onClose,
@@ -104,7 +115,8 @@ export function ImportInventoryModal({
   }
 
   function buildRow(obj: Record<string, unknown>): PreviewRow {
-    const name = norm(pick(obj, "المنتج"));
+    // "اسم المنتج" هو الرأس الجديد، و"المنتج" رأس قديم نبقي عليه للملفات السابقة
+    const name = norm(pickAny(obj, "اسم المنتج", "المنتج"));
     const brand = norm(pick(obj, "البراند"));
     const categoryLabel = norm(pick(obj, "الفئة"));
     const productType = norm(pick(obj, "النوع"));
@@ -113,7 +125,8 @@ export function ImportInventoryModal({
     const color = norm(pick(obj, "اللون"));
     const quantity = norm(pick(obj, "الكمية"));
     const price = norm(pick(obj, "السعر"));
-    const sku = norm(pick(obj, "SKU"));
+    // "الكود (SKU)" هو الرأس الجديد، و"SKU" رأس قديم نبقي عليه للملفات السابقة
+    const sku = norm(pickAny(obj, "الكود (SKU)", "SKU"));
 
     const category =
       CATEGORY_BY_LABEL[categoryLabel] ??
@@ -174,58 +187,38 @@ export function ImportInventoryModal({
   async function handleDownloadTemplate() {
     try {
       const XLSX = await import("xlsx");
-      const aoa = [
-        HEADERS,
-        [
-          "تيشيرت قطن كلاسيك",
-          "Zara",
-          "ملابس",
-          "تيشيرت",
-          "حدائق المعادي",
-          "M",
-          "أبيض",
-          20,
-          350,
-          "",
-        ],
-        [
-          "حذاء رياضي خفيف",
-          "Nike",
-          "أحذية",
-          "حذاء رياضي",
-          "زهراء المعادي",
-          "42",
-          "أسود",
-          8,
-          1450,
-          "",
-        ],
-        [
-          "عطر شرقي فاخر",
-          "Lattafa",
-          "عطور",
-          "",
-          "حدائق المعادي",
-          "100ml",
-          "",
-          15,
-          600,
-          "",
-        ],
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // صف الرؤوس فقط — بدون أي بيانات تجريبية
+      const ws = XLSX.utils.aoa_to_sheet([HEADERS]);
+
+      // عرض كل عمود مضبوط حسب نوع الحقل (بالترتيب الجديد)
       ws["!cols"] = [
-        { wch: 26 }, // المنتج
-        { wch: 14 }, // البراند
-        { wch: 10 }, // الفئة
-        { wch: 14 }, // النوع
-        { wch: 16 }, // الفرع
-        { wch: 8 }, // المقاس
-        { wch: 10 }, // اللون
-        { wch: 8 }, // الكمية
-        { wch: 10 }, // السعر
-        { wch: 18 }, // SKU
+        { wch: 26 }, // A اسم المنتج
+        { wch: 14 }, // B البراند
+        { wch: 12 }, // C الفئة
+        { wch: 14 }, // D النوع
+        { wch: 12 }, // E اللون
+        { wch: 8 }, // F المقاس
+        { wch: 16 }, // G الفرع
+        { wch: 8 }, // H الكمية
+        { wch: 10 }, // I السعر
+        { wch: 18 }, // J الكود (SKU)
       ];
+
+      // تثبيت صف الرؤوس (الصف الأول) عند التمرير
+      ws["!view"] = { freeze: { xSplit: 0, ySplit: 1, topLeftCell: "A2" } };
+
+      // قوائم تحقّق منسدلة على الأعمدة المرتبطة بقيم محددة بعد إعادة الترتيب:
+      //   C = الفئة، E = اللون، G = الفرع.
+      // ملاحظة: نسخة SheetJS المجتمعية (xlsx 0.18.5) تتجاهل هذه الخاصية عند
+      // الكتابة، لذا لن تظهر القوائم فعلياً إلا بترقية SheetJS Pro. نتركها هنا
+      // لتوثيق النية وتفعيلها تلقائياً عند الترقية. اللون حر فلا قائمة قيم له.
+      const catList = `"${CATEGORIES.map((c) => CATEGORY_LABELS[c]).join(",")}"`;
+      const branchList = `"${BRANCHES.map((b) => BRANCH_LABELS[b]).join(",")}"`;
+      ws["!dataValidation"] = [
+        { sqref: "C2:C1000", type: "list", formula1: catList },
+        { sqref: "G2:G1000", type: "list", formula1: branchList },
+      ];
+
       const wb = XLSX.utils.book_new();
       wb.Workbook = { Views: [{ RTL: true }] };
       XLSX.utils.book_append_sheet(wb, ws, "الجرد");
@@ -299,10 +292,10 @@ export function ImportInventoryModal({
       {!preview ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            نزّل القالب، املأ الصفوف بالأعمدة: المنتج، البراند، الفئة،
-            النوع، الفرع، المقاس، اللون، الكمية، السعر، SKU، ثم ارفع الملف
-            لتحديث المخزون بالجملة. «النوع» و«اللون» و«SKU» اختيارية — لو
-            تركت SKU فارغاً سيُولَّد تلقائياً.
+            نزّل القالب، املأ الصفوف بالأعمدة: اسم المنتج، البراند، الفئة،
+            النوع، اللون، المقاس، الفرع، الكمية، السعر، الكود (SKU)، ثم ارفع
+            الملف لتحديث المخزون بالجملة. «النوع» و«اللون» و«الكود (SKU)»
+            اختيارية — لو تركت الكود فارغاً سيُولَّد تلقائياً.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
