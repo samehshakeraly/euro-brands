@@ -132,17 +132,22 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   const brandOptions = (brandsData ?? []).map((b) => b.name);
 
   // أنواع المنتجات حسب الفئة المحددة
+  // فلترة دفاعية على العميل: تضمن عدم ظهور أنواع فئة قديمة أثناء نافذة
+  // إعادة الجلب (بين تغيير الفئة ووصول الاستجابة الجديدة من الخادم).
   const { data: typesData, refetch: refetchTypes } = useFetch<
     ProductTypeDTO[]
   >(`/api/product-types?category=${category}`);
-  const typeOptions = typesData ?? [];
+  const typeOptions = (typesData ?? []).filter((t) => t.category === category);
 
-  // عند تغيير الفئة: إن لم يعد النوع المختار ينتمي لها، نمسحه
+  // عند تغيير الفئة: إن لم يعد النوع المختار ينتمي لها، نمسحه.
+  // نتحقق من تطابق الفئة أيضاً (لا فقط المعرف) حتى لا تُقبَل بيانات الفئة
+  // القديمة المتبقية في typesData أثناء نافذة إعادة الجلب. شرط typesData
+  // يمنع المسح المبكر أثناء التحميل الأول (وضع التعديل قبل وصول أول استجابة).
   useEffect(() => {
     if (
       productTypeId &&
       typesData &&
-      !typesData.some((t) => t.id === productTypeId)
+      !typesData.some((t) => t.id === productTypeId && t.category === category)
     ) {
       setProductTypeId("");
     }
@@ -296,11 +301,11 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {/* البيانات الأساسية */}
-      <Card className="p-5">
-        <h2 className="mb-4 text-base font-bold text-text">بيانات المنتج</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <Card className="p-4">
+        <h2 className="mb-3 text-base font-bold text-text">بيانات المنتج</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="label">اسم المنتج *</label>
             <TextOnlyInput
@@ -309,24 +314,6 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               onChange={setName}
               placeholder="مثال: تيشيرت قطن كلاسيك"
             />
-          </div>
-
-          <div>
-            <label className="label">الفئة *</label>
-            <select
-              className="input"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value as CategoryValue);
-                setBrand("");
-              }}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* البراند */}
@@ -363,6 +350,27 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 لا توجد براندات لهذه الفئة — أضف واحداً عبر زر «جديد».
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="label">الفئة *</label>
+            <select
+              className="input"
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value as CategoryValue);
+                setBrand("");
+                setVariants((rows) =>
+                  rows.map((r) => (r.skuManual ? r : { ...r, sku: "" }))
+                );
+              }}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* نوع المنتج */}
@@ -419,9 +427,9 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
       </Card>
 
       {/* الصور */}
-      <Card className="p-5">
+      <Card className="p-4">
         <h2 className="mb-1 text-base font-bold text-text">صور المنتج</h2>
-        <p className="mb-4 text-xs text-muted">
+        <p className="mb-3 text-xs text-muted">
           حتى 3 صور — اسحب وأفلت أو اختر ملفاً
         </p>
 
@@ -486,36 +494,39 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
         />
 
         {images.length < 3 && (
-          <div className="mt-3 flex max-w-md items-center gap-2">
-            <div className="relative flex-1">
-              <Link2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                className="input pr-9"
-                placeholder="أو ألصق رابط صورة..."
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addUrl();
-                  }
-                }}
-              />
+          <div className="mt-3 max-w-md">
+            <label className="label">رابط صورة</label>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Link2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  className="input pr-9"
+                  placeholder="أو ألصق رابط صورة..."
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addUrl();
+                    }
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary h-[42px]"
+                onClick={addUrl}
+              >
+                إضافة
+              </button>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary h-[42px]"
-              onClick={addUrl}
-            >
-              إضافة
-            </button>
           </div>
         )}
       </Card>
 
       {/* المقاسات والألوان والكميات */}
-      <Card className="p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <Card className="p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-bold text-text">
             الأصناف — المقاسات والألوان والكميات
           </h2>
@@ -554,7 +565,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="hidden gap-2 px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[1.1fr_0.8fr_0.9fr_0.7fr_0.8fr_0.9fr_1.3fr_auto]">
             <span>الفرع</span>
             <span>المقاس</span>
@@ -562,18 +573,18 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
             <span>الكمية</span>
             <span>الحد الأدنى</span>
             <span>السعر</span>
-            <span>SKU</span>
+            <span>كود SKU</span>
             <span></span>
           </div>
 
           {variants.map((row) => (
             <div
               key={row.clientId}
-              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.1fr_0.8fr_0.9fr_0.7fr_0.8fr_0.9fr_1.3fr_auto] sm:items-start sm:border-0 sm:p-0"
+              className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-[1.1fr_0.8fr_0.9fr_0.7fr_0.8fr_0.9fr_1.3fr_auto] sm:h-9 sm:items-center sm:gap-2 sm:border-0 sm:p-0"
             >
               <VariantField label="الفرع">
                 <select
-                  className="input"
+                  className="input sm:h-9 sm:py-1"
                   value={row.branch}
                   onChange={(e) =>
                     updateRow(row.clientId, {
@@ -593,7 +604,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
               <VariantField label="المقاس">
                 <select
-                  className="input"
+                  className="input sm:h-9 sm:py-1"
                   value={row.size}
                   onChange={(e) =>
                     updateRow(row.clientId, {
@@ -616,7 +627,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
               <VariantField label="اللون">
                 <input
-                  className="input"
+                  className="input sm:h-9 sm:py-1"
                   value={row.color}
                   onChange={(e) =>
                     updateRow(row.clientId, {
@@ -630,7 +641,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
               <VariantField label="الكمية">
                 <NumberInput
-                  className="input nums"
+                  className="input nums sm:h-9 sm:py-1"
                   value={row.quantity}
                   onChange={(v) => updateRow(row.clientId, { quantity: v })}
                 />
@@ -638,7 +649,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
 
               <VariantField label="الحد الأدنى">
                 <NumberInput
-                  className="input nums"
+                  className="input nums sm:h-9 sm:py-1"
                   value={row.minQuantity}
                   onChange={(v) => updateRow(row.clientId, { minQuantity: v })}
                 />
@@ -647,7 +658,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               <VariantField label="السعر (ج.م)">
                 <NumberInput
                   decimal
-                  className="input nums"
+                  className="input nums sm:h-9 sm:py-1"
                   value={row.price}
                   onChange={(v) => updateRow(row.clientId, { price: v })}
                 />
@@ -656,7 +667,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
               <VariantField label="كود الصنف (SKU)">
                 <div className="flex gap-1">
                   <input
-                    className={`input nums ${row.skuManual ? "" : "text-muted"}`}
+                    className={`input nums sm:h-9 sm:py-1 ${row.skuManual ? "" : "text-muted"}`}
                     value={row.sku}
                     placeholder={
                       row.skuManual ? "" : previewSku(row) || "تلقائي عند الحفظ"
@@ -671,7 +682,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   {row.skuManual && (
                     <button
                       type="button"
-                      className="btn btn-ghost h-[38px] flex-shrink-0 !px-2 text-muted"
+                      className="btn btn-ghost h-[38px] flex-shrink-0 !px-2 text-muted sm:h-9"
                       onClick={() =>
                         updateRow(row.clientId, { sku: "", skuManual: false })
                       }
@@ -693,7 +704,7 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                   )
                 }
                 disabled={variants.length === 1}
-                className="btn btn-ghost col-span-2 h-11 w-full gap-2 text-danger hover:bg-[rgba(217,83,79,0.12)] disabled:opacity-30 sm:col-span-1 sm:h-[38px] sm:w-[38px] sm:!px-0"
+                className="btn btn-ghost col-span-2 h-11 w-full gap-2 text-danger hover:bg-[rgba(217,83,79,0.12)] disabled:opacity-30 sm:col-span-1 sm:h-9 sm:w-9 sm:!px-0"
                 aria-label="حذف الصف"
               >
                 <Trash2 className="h-4 w-4" />
