@@ -62,16 +62,23 @@ export async function POST(req: Request) {
             typeCode = upserted.code;
           }
 
-          let product = await tx.product.findFirst({
+          const found = await tx.product.findFirst({
             where: {
               name: { equals: row.name, mode: "insensitive" },
               brand: { equals: row.brand, mode: "insensitive" },
             },
-            select: { id: true, productTypeId: true, productType: { select: { code: true } } },
+            select: {
+              id: true,
+              productTypeId: true,
+              productType: { select: { code: true } },
+            },
           });
 
-          if (!product) {
-            product = (await tx.product.create({
+          let productId: string;
+          let existingTypeCode: string | null = null;
+
+          if (!found) {
+            const created = await tx.product.create({
               data: {
                 name: row.name,
                 brand: row.brand,
@@ -79,30 +86,37 @@ export async function POST(req: Request) {
                 images: [],
                 productTypeId,
               },
-              select: { id: true, productTypeId: true, productType: { select: { code: true } } },
-            })) as typeof product;
-            result.newProducts++;
-          } else if (productTypeId && !product.productTypeId) {
-            // ربط النوع لو ناقص على المنتج الموجود
-            await tx.product.update({
-              where: { id: product.id },
-              data: { productTypeId },
+              select: {
+                id: true,
+                productType: { select: { code: true } },
+              },
             });
-            product.productTypeId = productTypeId;
-            typeCode = typeCode ?? null;
+            productId = created.id;
+            existingTypeCode = created.productType?.code ?? null;
+            result.newProducts++;
+          } else {
+            productId = found.id;
+            existingTypeCode = found.productType?.code ?? null;
+            // ربط النوع لو ناقص على المنتج الموجود
+            if (productTypeId && !found.productTypeId) {
+              await tx.product.update({
+                where: { id: found.id },
+                data: { productTypeId },
+              });
+            }
           }
 
           // كود النوع: من الصف الحالي، وإلا من المنتج الموجود
-          const effectiveTypeCode = typeCode ?? product.productType?.code ?? null;
+          const effectiveTypeCode = typeCode ?? existingTypeCode;
 
-          const existing = await tx.productVariant.findUnique({
+          // البحث عن صنف بنفس (المقاس/الفرع/اللون). نستخدم findFirst لأن قيمة
+          // NULL في اللون لا تتصرف كمفتاح بحث داخل فهرس Postgres الفريد.
+          const existing = await tx.productVariant.findFirst({
             where: {
-              productId_size_branch_color: {
-                productId: product.id,
-                size: row.size,
-                branch: row.branch as Branch,
-                color: row.color,
-              },
+              productId,
+              size: row.size,
+              branch: row.branch as Branch,
+              color: row.color,
             },
             select: { id: true, sku: true, skuManual: true },
           });
@@ -129,7 +143,7 @@ export async function POST(req: Request) {
               ? uniquifySku(row.sku, takenSku)
               : uniquifySku(
                   buildVariantSku({
-                    productId: product.id,
+                    productId,
                     typeCode: effectiveTypeCode,
                     size: row.size,
                     branch: row.branch,
@@ -139,7 +153,7 @@ export async function POST(req: Request) {
                 );
             await tx.productVariant.create({
               data: {
-                productId: product.id,
+                productId,
                 size: row.size,
                 color: row.color,
                 branch: row.branch as Branch,
