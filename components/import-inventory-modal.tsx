@@ -28,10 +28,13 @@ const HEADERS = [
   "المنتج",
   "البراند",
   "الفئة",
+  "النوع",
   "الفرع",
   "المقاس",
+  "اللون",
   "الكمية",
   "السعر",
+  "SKU",
 ];
 
 const CATEGORY_BY_LABEL = Object.fromEntries(
@@ -45,10 +48,13 @@ interface PreviewRow {
   name: string;
   brand: string;
   categoryLabel: string;
+  productType: string;
   branchLabel: string;
   size: string;
+  color: string;
   quantity: string;
   price: string;
+  sku: string;
   parsed?: ImportRow;
   valid: boolean;
   error?: string;
@@ -89,19 +95,25 @@ export function ImportInventoryModal({
     );
     if (!p) return "منتج جديد";
     const v = p.variants.find(
-      (vr) => vr.size === row.size && vr.branch === row.branch
+      (vr) =>
+        vr.size === row.size &&
+        vr.branch === row.branch &&
+        (vr.color ?? null) === (row.color ?? null)
     );
-    return v ? "تحديث الكمية" : "مقاس جديد";
+    return v ? "تحديث الكمية" : "صنف جديد";
   }
 
   function buildRow(obj: Record<string, unknown>): PreviewRow {
     const name = norm(pick(obj, "المنتج"));
     const brand = norm(pick(obj, "البراند"));
     const categoryLabel = norm(pick(obj, "الفئة"));
+    const productType = norm(pick(obj, "النوع"));
     const branchLabel = norm(pick(obj, "الفرع"));
     const size = norm(pick(obj, "المقاس"));
+    const color = norm(pick(obj, "اللون"));
     const quantity = norm(pick(obj, "الكمية"));
     const price = norm(pick(obj, "السعر"));
+    const sku = norm(pick(obj, "SKU"));
 
     const category =
       CATEGORY_BY_LABEL[categoryLabel] ??
@@ -133,8 +145,11 @@ export function ImportInventoryModal({
           category: category!,
           branch: branch!,
           size,
+          color: color || null,
           quantity: Math.floor(qty),
           price: prc,
+          sku: sku || null,
+          productType: productType || null,
         }
       : undefined;
 
@@ -142,10 +157,13 @@ export function ImportInventoryModal({
       name,
       brand,
       categoryLabel,
+      productType,
       branchLabel,
       size,
+      color,
       quantity,
       price,
+      sku,
       parsed,
       valid,
       error,
@@ -158,19 +176,55 @@ export function ImportInventoryModal({
       const XLSX = await import("xlsx");
       const aoa = [
         HEADERS,
-        ["تيشيرت قطن كلاسيك", "Zara", "ملابس", "حدائق المعادي", "M", 20, 350],
-        ["حذاء رياضي خفيف", "Nike", "أحذية", "زهراء المعادي", "42", 8, 1450],
-        ["عطر شرقي فاخر", "Lattafa", "عطور", "حدائق المعادي", "100ml", 15, 600],
+        [
+          "تيشيرت قطن كلاسيك",
+          "Zara",
+          "ملابس",
+          "تيشيرت",
+          "حدائق المعادي",
+          "M",
+          "أبيض",
+          20,
+          350,
+          "",
+        ],
+        [
+          "حذاء رياضي خفيف",
+          "Nike",
+          "أحذية",
+          "حذاء رياضي",
+          "زهراء المعادي",
+          "42",
+          "أسود",
+          8,
+          1450,
+          "",
+        ],
+        [
+          "عطر شرقي فاخر",
+          "Lattafa",
+          "عطور",
+          "",
+          "حدائق المعادي",
+          "100ml",
+          "",
+          15,
+          600,
+          "",
+        ],
       ];
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws["!cols"] = [
-        { wch: 26 },
-        { wch: 14 },
-        { wch: 10 },
-        { wch: 16 },
-        { wch: 8 },
-        { wch: 8 },
-        { wch: 10 },
+        { wch: 26 }, // المنتج
+        { wch: 14 }, // البراند
+        { wch: 10 }, // الفئة
+        { wch: 14 }, // النوع
+        { wch: 16 }, // الفرع
+        { wch: 8 }, // المقاس
+        { wch: 10 }, // اللون
+        { wch: 8 }, // الكمية
+        { wch: 10 }, // السعر
+        { wch: 18 }, // SKU
       ];
       const wb = XLSX.utils.book_new();
       wb.Workbook = { Views: [{ RTL: true }] };
@@ -216,7 +270,7 @@ export function ImportInventoryModal({
     try {
       const res = await apiPost<ImportResult>("/api/products/import", { rows });
       toast.success(
-        `تم الاستيراد: ${res.updatedVariants} تحديث · ${res.newVariants} مقاس جديد · ${res.newProducts} منتج جديد`
+        `تم الاستيراد: ${res.updatedVariants} تحديث · ${res.newVariants} صنف جديد · ${res.newProducts} منتج جديد`
       );
       onImported();
       handleClose();
@@ -245,8 +299,10 @@ export function ImportInventoryModal({
       {!preview ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            نزّل القالب، املأ الصفوف بالأعمدة: المنتج، البراند، الفئة، الفرع،
-            المقاس، الكمية، السعر، ثم ارفع الملف لتحديث المخزون بالجملة.
+            نزّل القالب، املأ الصفوف بالأعمدة: المنتج، البراند، الفئة،
+            النوع، الفرع، المقاس، اللون، الكمية، السعر، SKU، ثم ارفع الملف
+            لتحديث المخزون بالجملة. «النوع» و«اللون» و«SKU» اختيارية — لو
+            تركت SKU فارغاً سيُولَّد تلقائياً.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
@@ -278,8 +334,10 @@ export function ImportInventoryModal({
           />
           <div className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted">
             <FileSpreadsheet className="h-4 w-4 shrink-0" />
-            الصفوف المطابقة (نفس المنتج والمقاس والفرع) ستُحدَّث كميتها وسعرها،
-            والجديدة ستُضاف تلقائياً.
+            الصفوف المطابقة (نفس المنتج والفرع والمقاس واللون) ستُحدَّث
+            كميتها وسعرها، والجديدة ستُضاف تلقائياً مع توليد SKU إن لم يكن
+            معبَّأ. أنواع المنتجات الجديدة المذكورة في عمود «النوع» تُنشأ
+            تلقائياً.
           </div>
         </div>
       ) : (
@@ -298,16 +356,19 @@ export function ImportInventoryModal({
           </div>
 
           <div className="max-h-[50vh] overflow-auto rounded-lg border">
-            <table className="w-full min-w-[640px] text-right text-xs">
+            <table className="w-full min-w-[920px] text-right text-xs">
               <thead className="sticky top-0 bg-surface">
                 <tr className="border-b text-muted">
                   <th className="px-2 py-2 font-medium">المنتج</th>
                   <th className="px-2 py-2 font-medium">البراند</th>
                   <th className="px-2 py-2 font-medium">الفئة</th>
+                  <th className="px-2 py-2 font-medium">النوع</th>
                   <th className="px-2 py-2 font-medium">الفرع</th>
                   <th className="px-2 py-2 font-medium">المقاس</th>
+                  <th className="px-2 py-2 font-medium">اللون</th>
                   <th className="px-2 py-2 font-medium">الكمية</th>
                   <th className="px-2 py-2 font-medium">السعر</th>
+                  <th className="px-2 py-2 font-medium">SKU</th>
                   <th className="px-2 py-2 font-medium">الحالة</th>
                 </tr>
               </thead>
@@ -326,11 +387,16 @@ export function ImportInventoryModal({
                       {r.categoryLabel || "—"}
                     </td>
                     <td className="px-2 py-2 text-muted">
+                      {r.productType || "—"}
+                    </td>
+                    <td className="px-2 py-2 text-muted">
                       {r.branchLabel || "—"}
                     </td>
                     <td className="px-2 py-2 text-text nums">{r.size || "—"}</td>
+                    <td className="px-2 py-2 text-muted">{r.color || "—"}</td>
                     <td className="px-2 py-2 text-text nums">{r.quantity}</td>
                     <td className="px-2 py-2 text-text nums">{r.price}</td>
+                    <td className="px-2 py-2 text-muted nums">{r.sku || "—"}</td>
                     <td className="px-2 py-2">
                       {r.valid ? (
                         <span className="text-success">{r.status}</span>
