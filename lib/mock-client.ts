@@ -12,6 +12,9 @@ import {
   mockHomeStats,
   mockListBrands,
   mockCreateBrand,
+  mockListProductTypes,
+  mockCreateProductType,
+  mockDeleteProductType,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -27,6 +30,7 @@ import {
   parseDeliveryStatus,
   parseImportRows,
   parseProductInput,
+  parseProductTypeInput,
   parseSaleInput,
 } from "./validate";
 
@@ -84,6 +88,21 @@ export async function mockApi<T>(
   if (path === "/api/brands") {
     if (method === "GET") return mockListBrands(sp.get("category")) as T;
     if (method === "POST") return mockCreateBrand(parseBrandInput(body)) as T;
+  }
+
+  // /api/product-types
+  if (path === "/api/product-types") {
+    if (method === "GET") return mockListProductTypes(sp.get("category")) as T;
+    if (method === "POST")
+      return mockCreateProductType(parseProductTypeInput(body)) as T;
+  }
+
+  // /api/product-types/[id]
+  const ptMatch = path.match(/^\/api\/product-types\/([^/]+)$/);
+  if (ptMatch && method === "DELETE") {
+    const removed = mockDeleteProductType(decodeURIComponent(ptMatch[1]));
+    if (!removed) throw new Error("النوع غير موجود");
+    return { id: ptMatch[1] } as T;
   }
 
   // /api/sales
