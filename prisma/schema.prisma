@@ -76,9 +76,12 @@ model Product {
   brand       String
   category    Category
   description String?
-  sku         String? // كود المنتج (اختياري)
+  sku         String? // (مهجور) كان كود المنتج — الآن لكل صنف SKU خاص به
   barcode     String? // الباركود (اختياري)
   images      String[] @default([]) // حتى 3 صور
+
+  productTypeId String?
+  productType   ProductType? @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
 
   variants  ProductVariant[]
   saleItems SaleItem[]
@@ -88,6 +91,7 @@ model Product {
 
   @@index([category])
   @@index([brand])
+  @@index([productTypeId])
 }
 
 // سجل البراندات لكل فئة (لقوائم الاختيار والفلاتر)
@@ -101,20 +105,38 @@ model Brand {
   @@index([category])
 }
 
+// أنواع المنتجات لكل فئة (مثلاً: تيشيرت/قميص داخل «ملابس»، حذاء رياضي/كلاسيك داخل «أحذية»)
+// الـ code يُستخدم كبادئة لتوليد SKU التلقائي لكل صنف.
+model ProductType {
+  id        String   @id @default(cuid())
+  name      String
+  code      String // بادئة قصيرة (TSH, SNK, ...) تظهر في الـ SKU
+  category  Category
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@unique([name, category])
+  @@index([category])
+}
+
 model ProductVariant {
   id        String @id @default(cuid())
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   size        String // XS S M L XL 2XL 3XL 4XL 5XL أو مقاسات أرقام للأحذية
+  color       String? // لون الصنف (اختياري)
   quantity    Int    @default(0)
   minQuantity Int    @default(5) // الحد الأدنى للتنبيه بقلة المخزون
   branch      Branch
   price       Float // سعر البيع لكل صنف بالجنيه المصري
+  sku         String? @unique // كود الصنف (يولَّد تلقائياً أو يُدخَل يدوياً)
+  skuManual   Boolean @default(false) // علامة أن المستخدم عدّل الكود يدوياً (لا يُعاد توليده)
 
   saleItems SaleItem[]
 
-  @@unique([productId, size, branch])
+  @@unique([productId, size, branch, color])
   @@index([productId])
   @@index([branch])
 }
