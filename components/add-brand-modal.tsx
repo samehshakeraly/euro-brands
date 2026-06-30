@@ -4,6 +4,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
+import { TextOnlyInput } from "@/components/ui/inputs";
 import { apiPost } from "@/lib/client";
 import { CATEGORY_LABELS, type CategoryValue } from "@/lib/constants";
 import type { BrandDTO } from "@/lib/types";
@@ -65,11 +66,11 @@ export function AddBrandModal({
       }
     >
       <label className="label">اسم البراند</label>
-      <input
+      <TextOnlyInput
         autoFocus
         className="input"
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={setName}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
