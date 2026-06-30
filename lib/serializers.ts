@@ -1,15 +1,31 @@
 import type {
   Brand,
   Product,
+  ProductType,
   ProductVariant,
   Sale,
   SaleItem,
 } from "@prisma/client";
 import type { BranchValue, CategoryValue } from "./constants";
-import type { BrandDTO, ProductDTO, SaleDTO, VariantDTO } from "./types";
+import type {
+  BrandDTO,
+  ProductDTO,
+  ProductTypeDTO,
+  SaleDTO,
+  VariantDTO,
+} from "./types";
 
 export function toBrandDTO(b: Brand): BrandDTO {
   return { id: b.id, name: b.name, category: b.category as CategoryValue };
+}
+
+export function toProductTypeDTO(t: ProductType): ProductTypeDTO {
+  return {
+    id: t.id,
+    name: t.name,
+    code: t.code,
+    category: t.category as CategoryValue,
+  };
 }
 
 export function toVariantDTO(v: ProductVariant): VariantDTO {
@@ -17,14 +33,20 @@ export function toVariantDTO(v: ProductVariant): VariantDTO {
     id: v.id,
     productId: v.productId,
     size: v.size,
+    color: v.color ?? null,
     quantity: v.quantity,
     minQuantity: v.minQuantity,
     branch: v.branch as BranchValue,
     price: v.price,
+    sku: v.sku ?? null,
+    skuManual: v.skuManual,
   };
 }
 
-type ProductWithVariants = Product & { variants: ProductVariant[] };
+type ProductWithVariants = Product & {
+  variants: ProductVariant[];
+  productType?: ProductType | null;
+};
 
 export function toProductDTO(
   p: ProductWithVariants,
@@ -40,6 +62,8 @@ export function toProductDTO(
     sku: p.sku,
     barcode: p.barcode,
     images: p.images,
+    productTypeId: p.productTypeId ?? null,
+    productType: p.productType ? toProductTypeDTO(p.productType) : null,
     variants,
     totalQuantity: variants.reduce((sum, v) => sum + v.quantity, 0),
     ...(soldCount !== undefined ? { soldCount } : {}),
@@ -50,7 +74,7 @@ export function toProductDTO(
 
 type SaleItemWithRefs = SaleItem & {
   product: { name: string; brand: string };
-  variant: { size: string };
+  variant: { size: string; color: string | null; sku: string | null };
 };
 type SaleWithItems = Sale & { items: SaleItemWithRefs[] };
 
@@ -91,6 +115,8 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
       productName: it.product.name,
       brand: it.product.brand,
       size: it.variant.size,
+      color: it.variant.color ?? null,
+      sku: it.variant.sku ?? null,
     })),
     itemsCount: s.items.reduce((sum, it) => sum + it.quantity, 0),
   };
