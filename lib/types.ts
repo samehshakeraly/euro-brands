@@ -16,10 +16,13 @@ export interface VariantDTO {
   id: string;
   productId: string;
   size: string;
+  color: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
   price: number;
+  sku: string | null;
+  skuManual: boolean;
 }
 
 export interface ProductDTO {
@@ -28,9 +31,11 @@ export interface ProductDTO {
   brand: string;
   category: CategoryValue;
   description: string | null;
-  sku: string | null;
+  sku: string | null; // (مهجور) محفوظ على المنتجات القديمة فقط
   barcode: string | null;
   images: string[];
+  productTypeId: string | null;
+  productType: ProductTypeDTO | null;
   variants: VariantDTO[];
   totalQuantity: number;
   soldCount?: number; // إجمالي القطع المباعة (للترتيب بالأكثر مبيعاً)
@@ -49,6 +54,20 @@ export interface BrandInput {
   category: CategoryValue;
 }
 
+// أنواع المنتجات
+export interface ProductTypeDTO {
+  id: string;
+  name: string;
+  code: string;
+  category: CategoryValue;
+}
+
+export interface ProductTypeInput {
+  name: string;
+  code: string;
+  category: CategoryValue;
+}
+
 // تنبيهات قلة المخزون (الكمية <= الحد الأدنى للمقاس)
 export interface LowStockItem {
   id: string;
@@ -56,6 +75,7 @@ export interface LowStockItem {
   brand: string;
   branch: BranchValue;
   size: string;
+  color: string | null;
   quantity: number;
   minQuantity: number;
 }
@@ -80,6 +100,8 @@ export interface SaleItemDTO {
   productName: string;
   brand: string;
   size: string;
+  color: string | null;
+  sku: string | null;
 }
 
 export interface SaleDTO {
@@ -124,10 +146,13 @@ export interface DeliveryInput {
 export interface VariantInput {
   id?: string; // موجود عند التعديل، غير موجود عند الإضافة
   size: string;
+  color: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
   price: number;
+  sku: string | null; // إن غاب أو فضل null يُولَّد تلقائياً، وإن جاء معتمداً يُعتَبر يدوي
+  skuManual?: boolean;
 }
 
 export interface ProductInput {
@@ -135,9 +160,9 @@ export interface ProductInput {
   brand: string;
   category: CategoryValue;
   description?: string | null;
-  sku?: string | null;
   barcode?: string | null;
   images: string[];
+  productTypeId?: string | null;
   variants: VariantInput[];
 }
 
@@ -148,8 +173,11 @@ export interface ImportRow {
   category: CategoryValue;
   branch: BranchValue;
   size: string;
+  color: string | null;
   quantity: number;
   price: number;
+  sku: string | null;
+  productType: string | null; // اسم النوع — يُنشأ إن لم يكن موجوداً
 }
 
 export interface ImportResult {

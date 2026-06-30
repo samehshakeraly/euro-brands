@@ -24,6 +24,7 @@ export interface NormVariant {
   minQuantity: number;
   branch: BranchValue;
   size: string;
+  color?: string | null;
 }
 export interface NormProduct {
   id: string;

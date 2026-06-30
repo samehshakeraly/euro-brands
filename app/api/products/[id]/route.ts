@@ -9,6 +9,7 @@ import {
   mockUpdateProduct,
   mockDeleteProduct,
 } from "@/lib/mock-store";
+import { buildVariantSku, uniquifySku } from "@/lib/sku";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export async function GET(
     const product = await prisma.product.findUnique({
       where: { id: params.id },
       include: {
+        productType: true,
         variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] },
       },
     });
@@ -50,20 +52,31 @@ export async function PUT(
       return dto ? ok(dto) : fail("المنتج غير موجود", 404);
     }
 
+    // اجلب كود النوع لاستخدامه عند توليد SKU التلقائي
+    let typeCode: string | null = null;
+    if (input.productTypeId) {
+      const t = await prisma.productType.findUnique({
+        where: { id: input.productTypeId },
+        select: { code: true },
+      });
+      if (!t) throw new ValidationError("نوع المنتج المختار غير موجود");
+      typeCode = t.code;
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.productVariant.findMany({
         where: { productId: id },
-        select: { id: true },
+        select: { id: true, sku: true, skuManual: true },
       });
-      const existingIds = new Set(existing.map((e) => e.id));
+      const existingMap = new Map(existing.map((e) => [e.id, e]));
       const keptIds = new Set(
         input.variants
           .map((v) => v.id)
-          .filter((vid): vid is string => !!vid && existingIds.has(vid))
+          .filter((vid): vid is string => !!vid && existingMap.has(vid))
       );
 
       // المقاسات المحذوفة من النموذج
-      const removedIds = [...existingIds].filter((eid) => !keptIds.has(eid));
+      const removedIds = [...existingMap.keys()].filter((eid) => !keptIds.has(eid));
       if (removedIds.length > 0) {
         // لا يمكن حذف مقاس مرتبط بفواتير سابقة — نصفّر كميته بدلاً من ذلك
         const referenced = await tx.saleItem.findMany({
@@ -86,28 +99,86 @@ export async function PUT(
           });
       }
 
+      // SKUs الحالية على بقية المنتجات (لمنع التكرار العالمي)
+      const others = await tx.productVariant.findMany({
+        where: { productId: { not: id }, sku: { not: null } },
+        select: { sku: true },
+      });
+      const takenSku = new Set(
+        others.map((o) => o.sku!).filter((s): s is string => !!s)
+      );
+      // SKUs الموجودة على الأصناف التي ستبقى (للأصناف التي لن نُعيد توليد SKU لها)
+      for (const e of existingMap.values()) {
+        if (e.sku && keptIds.has(e.id)) takenSku.add(e.sku);
+      }
+
       // تحديث/إضافة المقاسات
       for (const v of input.variants) {
-        if (v.id && existingIds.has(v.id)) {
+        if (v.id && existingMap.has(v.id)) {
+          const prev = existingMap.get(v.id)!;
+          const explicit = v.sku?.trim();
+          let nextSku: string | null = prev.sku;
+          let nextSkuManual = prev.skuManual;
+
+          if (explicit) {
+            // إن جاء SKU من العميل: يُعتبر يدوياً ويُمنع تكراره
+            if (prev.sku) takenSku.delete(prev.sku);
+            nextSku = uniquifySku(explicit, takenSku);
+            nextSkuManual = v.skuManual !== false;
+          } else if (!prev.skuManual) {
+            // إعادة التوليد فقط لو لم يكن يدوياً
+            if (prev.sku) takenSku.delete(prev.sku);
+            nextSku = uniquifySku(
+              buildVariantSku({
+                productId: id,
+                typeCode,
+                size: v.size,
+                branch: v.branch,
+                color: v.color,
+              }),
+              takenSku
+            );
+            nextSkuManual = false;
+          }
+
           await tx.productVariant.update({
             where: { id: v.id },
             data: {
               size: v.size,
+              color: v.color,
               branch: v.branch as Branch,
               quantity: v.quantity,
               minQuantity: v.minQuantity,
               price: v.price,
+              sku: nextSku,
+              skuManual: nextSkuManual,
             },
           });
         } else {
+          const explicit = v.sku?.trim();
+          const newSku = explicit
+            ? uniquifySku(explicit, takenSku)
+            : uniquifySku(
+                buildVariantSku({
+                  productId: id,
+                  typeCode,
+                  size: v.size,
+                  branch: v.branch,
+                  color: v.color,
+                }),
+                takenSku
+              );
           await tx.productVariant.create({
             data: {
               productId: id,
               size: v.size,
+              color: v.color,
               branch: v.branch as Branch,
               quantity: v.quantity,
               minQuantity: v.minQuantity,
               price: v.price,
+              sku: newSku,
+              skuManual: !!explicit && v.skuManual !== false,
             },
           });
         }
@@ -120,11 +191,14 @@ export async function PUT(
           brand: input.brand,
           category: input.category as Category,
           description: input.description,
-          sku: input.sku ?? null,
           barcode: input.barcode ?? null,
           images: input.images,
+          productTypeId: input.productTypeId ?? null,
         },
-        include: { variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] } },
+        include: {
+          productType: true,
+          variants: { orderBy: [{ branch: "asc" }, { size: "asc" }] },
+        },
       });
     });
 
@@ -145,8 +219,12 @@ export async function PUT(
     if (error instanceof ValidationError) return fail(error.message, 422);
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2025") return fail("المنتج غير موجود", 404);
-      if (error.code === "P2002")
-        return fail("يوجد تكرار في نفس المقاس والفرع", 422);
+      if (error.code === "P2002") {
+        const target = (error.meta as { target?: string[] } | null)?.target;
+        if (target?.includes("sku"))
+          return fail("كود الصنف (SKU) مكرّر — اختر كوداً مختلفاً", 422);
+        return fail("يوجد تكرار في نفس المقاس واللون داخل نفس الفرع", 422);
+      }
     }
     return handleServerError(error);
   }

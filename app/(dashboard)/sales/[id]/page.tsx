@@ -121,7 +121,12 @@ export default function SaleDetailPage() {
                     <p className="font-medium text-text">{item.productName}</p>
                     <p className="text-xs text-muted">{item.brand}</p>
                   </td>
-                  <td className="px-2 py-3 text-text nums">{item.size}</td>
+                  <td className="px-2 py-3 text-text">
+                    <span className="nums">{item.size}</span>
+                    {item.color && (
+                      <span className="text-muted"> / {item.color}</span>
+                    )}
+                  </td>
                   <td className="px-2 py-3 text-muted nums">
                     {formatCurrency(item.unitPrice)}
                   </td>
@@ -146,6 +151,7 @@ export default function SaleDetailPage() {
                   <p className="font-medium text-text">{item.productName}</p>
                   <p className="text-xs text-muted">
                     {item.brand} · مقاس <span className="nums">{item.size}</span>
+                    {item.color && ` · ${item.color}`}
                   </p>
                 </div>
                 <p className="font-bold text-text nums">

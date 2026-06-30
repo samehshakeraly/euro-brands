@@ -59,6 +59,8 @@ interface CartItem {
   productName: string;
   brand: string;
   size: string;
+  color: string | null;
+  sku: string | null;
   unitPrice: number;
   available: number;
   quantity: number;
@@ -239,6 +241,8 @@ function PosRegister({
           productName: product.name,
           brand: product.brand,
           size: variant.size,
+          color: variant.color ?? null,
+          sku: variant.sku ?? null,
           unitPrice: variant.price,
           available: variant.quantity,
           quantity: 1,
@@ -543,7 +547,8 @@ function PosRegister({
                                   : "hover:border-accent hover:text-accent"
                               )}
                             >
-                              {v.size}({v.quantity})
+                              {v.size}
+                              {v.color ? `/${v.color}` : ""} ({v.quantity})
                             </button>
                           ))}
                         </div>
@@ -632,7 +637,9 @@ function PosRegister({
                           {item.productName}
                         </p>
                         <p className="text-xs text-muted">
-                          مقاس {item.size} · {formatCurrency(item.unitPrice)}
+                          مقاس {item.size}
+                          {item.color ? ` / ${item.color}` : ""} ·{" "}
+                          {formatCurrency(item.unitPrice)}
                         </p>
                       </div>
                       <button
@@ -1123,7 +1130,10 @@ function SearchResult({
                 inCart > 0 && !out && "border-accent bg-accent-soft text-accent"
               )}
             >
-              <span className="nums">{v.size}</span>
+              <span className="nums">
+                {v.size}
+                {v.color ? ` / ${v.color}` : ""}
+              </span>
               <span className="mr-1 text-xs text-muted nums">
                 ({out ? "نفذ" : v.quantity})
               </span>

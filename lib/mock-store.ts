@@ -30,11 +30,14 @@ import type {
   LowStockResponse,
   ProductDTO,
   ProductInput,
+  ProductTypeDTO,
+  ProductTypeInput,
   ReportsData,
   SaleDTO,
   SaleInput,
   VariantDTO,
 } from "./types";
+import { buildVariantSku, uniquifySku } from "./sku";
 
 // "وضع المعاينة": يعمل تلقائياً عند غياب DATABASE_URL، أو يُفرض عبر MOCK_DATA=1
 export const MOCK_MODE =
@@ -49,10 +52,13 @@ interface MVariant {
   id: string;
   productId: string;
   size: string;
+  color: string | null;
   quantity: number;
   minQuantity: number;
   branch: BranchValue;
   price: number;
+  sku: string | null;
+  skuManual: boolean;
 }
 interface MProduct {
   id: string;
@@ -63,9 +69,16 @@ interface MProduct {
   sku: string | null;
   barcode: string | null;
   images: string[];
+  productTypeId: string | null;
   variants: MVariant[];
   createdAt: Date;
   updatedAt: Date;
+}
+interface MProductType {
+  id: string;
+  name: string;
+  code: string;
+  category: CategoryValue;
 }
 interface MItem {
   id: string;
@@ -115,6 +128,7 @@ interface Store {
   products: MProduct[];
   sales: MSale[];
   brands: MBrand[];
+  productTypes: MProductType[];
   seq: number;
 }
 
@@ -136,7 +150,13 @@ const IMG = (seed: string) =>
 //  بناء البيانات التجريبية
 // ----------------------------------------------------
 function buildStore(): Store {
-  const store: Store = { products: [], sales: [], brands: [], seq: 0 };
+  const store: Store = {
+    products: [],
+    sales: [],
+    brands: [],
+    productTypes: [],
+    seq: 0,
+  };
   const id = (p: string) => `${p}_${++store.seq}`;
 
   type VSpec = [size: string, branch: BranchValue, qty: number, price: number];
@@ -157,20 +177,28 @@ function buildStore(): Store {
       brand,
       category,
       description,
-      sku: `${code}-${String(n).padStart(3, "0")}`,
+      sku: null,
       barcode: `62${String(n).padStart(10, "0")}`,
       images: [image],
+      productTypeId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-      variants: specs.map(([size, branch, quantity, price]) => ({
-        id: id("v"),
-        productId: pid,
-        size,
-        quantity,
-        minQuantity: 5,
-        branch,
-        price,
-      })),
+      variants: specs.map(([size, branch, quantity, price], idx) => {
+        const vid = id("v");
+        const sku = `${code}-${String(n).padStart(3, "0")}-${size}-${branch === "HADAYEK" ? "H" : "Z"}${idx}`;
+        return {
+          id: vid,
+          productId: pid,
+          size,
+          color: null,
+          quantity,
+          minQuantity: 5,
+          branch,
+          price,
+          sku,
+          skuManual: false,
+        };
+      }),
     };
   };
 
@@ -525,11 +553,23 @@ function shapeVariant(v: MVariant): VariantDTO {
     id: v.id,
     productId: v.productId,
     size: v.size,
+    color: v.color,
     quantity: v.quantity,
     minQuantity: v.minQuantity,
     branch: v.branch,
     price: v.price,
+    sku: v.sku,
+    skuManual: v.skuManual,
   };
+}
+
+function findProductType(id: string | null): MProductType | null {
+  if (!id) return null;
+  return store.productTypes.find((t) => t.id === id) ?? null;
+}
+
+function shapeProductType(t: MProductType): ProductTypeDTO {
+  return { id: t.id, name: t.name, code: t.code, category: t.category };
 }
 
 function shapeProduct(
@@ -539,6 +579,7 @@ function shapeProduct(
   const variants = (filter ? p.variants.filter(filter) : p.variants).map(
     shapeVariant
   );
+  const type = findProductType(p.productTypeId);
   return {
     id: p.id,
     name: p.name,
@@ -548,6 +589,8 @@ function shapeProduct(
     sku: p.sku,
     barcode: p.barcode,
     images: p.images,
+    productTypeId: p.productTypeId,
+    productType: type ? shapeProductType(type) : null,
     variants,
     totalQuantity: variants.reduce((s, v) => s + v.quantity, 0),
     createdAt: p.createdAt.toISOString(),
@@ -604,6 +647,8 @@ function shapeSale(s: MSale): SaleDTO {
         productName: ref?.product.name ?? "—",
         brand: ref?.product.brand ?? "",
         size: ref?.variant.size ?? "—",
+        color: ref?.variant.color ?? null,
+        sku: ref?.variant.sku ?? null,
       };
     }),
     itemsCount: s.items.reduce((sum, it) => sum + it.quantity, 0),
@@ -670,13 +715,18 @@ export function mockListProducts(sp: URLSearchParams): ProductDTO[] {
     .filter((p) => {
       if (category && p.category !== category) return false;
       if (brand && p.brand !== brand) return false;
-      if (
-        search &&
-        !`${p.name} ${p.brand} ${p.sku ?? ""} ${p.barcode ?? ""}`
-          .toLowerCase()
-          .includes(search)
-      )
-        return false;
+      if (search) {
+        const variantSkus = p.variants
+          .map((v) => v.sku ?? "")
+          .filter(Boolean)
+          .join(" ");
+        if (
+          !`${p.name} ${p.brand} ${p.sku ?? ""} ${p.barcode ?? ""} ${variantSkus}`
+            .toLowerCase()
+            .includes(search)
+        )
+          return false;
+      }
       if (hasVariantFilter && !p.variants.some(matchVariant)) return false;
       return true;
     })
@@ -709,6 +759,7 @@ export function mockNormalizedData(): {
       minQuantity: v.minQuantity,
       branch: v.branch,
       size: v.size,
+      color: v.color,
     })),
   }));
   const sales: NormSale[] = store.sales
@@ -768,6 +819,7 @@ export function mockLowStock(): LowStockResponse {
         brand: p.brand,
         branch: v.branch,
         size: v.size,
+        color: v.color,
         quantity: v.quantity,
         minQuantity: v.minQuantity,
       }))
@@ -778,26 +830,51 @@ export function mockLowStock(): LowStockResponse {
 
 export function mockCreateProduct(input: ProductInput): ProductDTO {
   const pid = nextId("p");
+  const type = findProductType(input.productTypeId ?? null);
+  const takenSku = new Set<string>(
+    store.products.flatMap((p) =>
+      p.variants.map((v) => v.sku ?? "").filter(Boolean)
+    )
+  );
   const product: MProduct = {
     id: pid,
     name: input.name,
     brand: input.brand,
     category: input.category,
     description: input.description ?? null,
-    sku: input.sku ?? null,
+    sku: null,
     barcode: input.barcode ?? null,
     images: input.images,
+    productTypeId: input.productTypeId ?? null,
     createdAt: new Date(),
     updatedAt: new Date(),
-    variants: input.variants.map((v) => ({
-      id: nextId("v"),
-      productId: pid,
-      size: v.size,
-      branch: v.branch,
-      quantity: v.quantity,
-      minQuantity: v.minQuantity,
-      price: v.price,
-    })),
+    variants: input.variants.map((v) => {
+      const skuManual = !!v.sku && v.skuManual !== false;
+      const sku = v.sku?.trim()
+        ? uniquifySku(v.sku.trim(), takenSku)
+        : uniquifySku(
+            buildVariantSku({
+              productId: pid,
+              typeCode: type?.code ?? null,
+              size: v.size,
+              branch: v.branch,
+              color: v.color,
+            }),
+            takenSku
+          );
+      return {
+        id: nextId("v"),
+        productId: pid,
+        size: v.size,
+        color: v.color,
+        branch: v.branch,
+        quantity: v.quantity,
+        minQuantity: v.minQuantity,
+        price: v.price,
+        sku,
+        skuManual,
+      };
+    }),
   };
   store.products.unshift(product);
   registerBrand(product.brand, product.category);
@@ -828,25 +905,74 @@ export function mockUpdateProduct(
     return false;
   });
 
+  const type = findProductType(input.productTypeId ?? null);
+  // SKUs المستخدَمة عبر كل المنتجات (باستثناء أصناف هذا المنتج التي ستُعاد توليدها)
+  const takenSku = new Set<string>();
+  for (const p of store.products) {
+    for (const v of p.variants) {
+      if (p.id === product.id && !keptIds.has(v.id)) continue;
+      if (v.sku) takenSku.add(v.sku);
+    }
+  }
+
   for (const vi of input.variants) {
     const existing = vi.id
       ? product.variants.find((v) => v.id === vi.id)
       : undefined;
     if (existing) {
       existing.size = vi.size;
+      existing.color = vi.color;
       existing.branch = vi.branch;
       existing.quantity = vi.quantity;
       existing.minQuantity = vi.minQuantity;
       existing.price = vi.price;
+      const explicit = vi.sku?.trim();
+      if (explicit) {
+        // SKU يدوي (أو محرَّر) — نمنع التكرار مع الباقي
+        if (existing.sku) takenSku.delete(existing.sku);
+        existing.sku = uniquifySku(explicit, takenSku);
+        existing.skuManual = vi.skuManual !== false;
+      } else if (!existing.skuManual) {
+        // إعادة التوليد فقط لو لم يكن يدوياً
+        if (existing.sku) takenSku.delete(existing.sku);
+        existing.sku = uniquifySku(
+          buildVariantSku({
+            productId: product.id,
+            typeCode: type?.code ?? null,
+            size: vi.size,
+            branch: vi.branch,
+            color: vi.color,
+          }),
+          takenSku
+        );
+      } else if (existing.sku) {
+        takenSku.add(existing.sku);
+      }
     } else {
+      const explicit = vi.sku?.trim();
+      const sku = explicit
+        ? uniquifySku(explicit, takenSku)
+        : uniquifySku(
+            buildVariantSku({
+              productId: product.id,
+              typeCode: type?.code ?? null,
+              size: vi.size,
+              branch: vi.branch,
+              color: vi.color,
+            }),
+            takenSku
+          );
       product.variants.push({
         id: nextId("v"),
         productId: product.id,
         size: vi.size,
+        color: vi.color,
         branch: vi.branch,
         quantity: vi.quantity,
         minQuantity: vi.minQuantity,
         price: vi.price,
+        sku,
+        skuManual: !!explicit && vi.skuManual !== false,
       });
     }
   }
@@ -855,9 +981,9 @@ export function mockUpdateProduct(
   product.brand = input.brand;
   product.category = input.category;
   product.description = input.description ?? null;
-  product.sku = input.sku ?? null;
   product.barcode = input.barcode ?? null;
   product.images = input.images;
+  product.productTypeId = input.productTypeId ?? null;
   product.updatedAt = new Date();
   registerBrand(product.brand, product.category);
 
@@ -900,6 +1026,30 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
       (p) => key(p.name) === key(row.name) && key(p.brand) === key(row.brand)
     );
 
+    // نوع المنتج (يُنشأ تلقائياً عند الحاجة)
+    let typeId: string | null = null;
+    if (row.productType) {
+      let pt = store.productTypes.find(
+        (t) =>
+          t.name.trim().toLowerCase() === row.productType!.trim().toLowerCase() &&
+          t.category === row.category
+      );
+      if (!pt) {
+        const code = row.productType
+          .replace(/[^A-Za-z0-9]/g, "")
+          .slice(0, 4)
+          .toUpperCase() || "GEN";
+        pt = {
+          id: nextId("pt"),
+          name: row.productType,
+          code,
+          category: row.category,
+        };
+        store.productTypes.push(pt);
+      }
+      typeId = pt.id;
+    }
+
     if (!product) {
       product = {
         id: nextId("p"),
@@ -910,6 +1060,7 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
         sku: null,
         barcode: null,
         images: [],
+        productTypeId: typeId,
         createdAt: new Date(),
         updatedAt: new Date(),
         variants: [],
@@ -917,24 +1068,54 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
       store.products.unshift(product);
       registerBrand(product.brand, product.category);
       result.newProducts++;
+    } else if (typeId && !product.productTypeId) {
+      product.productTypeId = typeId;
     }
 
     const variant = product.variants.find(
-      (v) => v.size === row.size && v.branch === row.branch
+      (v) =>
+        v.size === row.size &&
+        v.branch === row.branch &&
+        (v.color ?? null) === (row.color ?? null)
     );
     if (variant) {
       variant.quantity = row.quantity;
       variant.price = row.price;
+      if (row.sku) {
+        variant.sku = row.sku;
+        variant.skuManual = true;
+      }
       result.updatedVariants++;
     } else {
+      const type = findProductType(product.productTypeId);
+      const takenSku = new Set<string>(
+        store.products.flatMap((p) =>
+          p.variants.map((v) => v.sku ?? "").filter(Boolean)
+        )
+      );
+      const sku = row.sku
+        ? uniquifySku(row.sku, takenSku)
+        : uniquifySku(
+            buildVariantSku({
+              productId: product.id,
+              typeCode: type?.code ?? null,
+              size: row.size,
+              branch: row.branch,
+              color: row.color,
+            }),
+            takenSku
+          );
       product.variants.push({
         id: nextId("v"),
         productId: product.id,
         size: row.size,
+        color: row.color,
         branch: row.branch,
         quantity: row.quantity,
         minQuantity: 5,
         price: row.price,
+        sku,
+        skuManual: !!row.sku,
       });
       result.newVariants++;
     }
@@ -942,6 +1123,45 @@ export function mockImportInventory(rows: ImportRow[]): ImportResult {
   }
 
   return result;
+}
+
+// ----- أنواع المنتجات -----
+export function mockListProductTypes(
+  category?: string | null
+): ProductTypeDTO[] {
+  return store.productTypes
+    .filter((t) => !category || t.category === category)
+    .map(shapeProductType)
+    .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+}
+
+export function mockCreateProductType(input: ProductTypeInput): ProductTypeDTO {
+  const found = store.productTypes.find(
+    (t) => t.name === input.name && t.category === input.category
+  );
+  if (found) {
+    found.code = input.code; // ندعم التحديث (idempotent مع تعديل الكود)
+    return shapeProductType(found);
+  }
+  const t: MProductType = {
+    id: nextId("pt"),
+    name: input.name,
+    code: input.code,
+    category: input.category,
+  };
+  store.productTypes.push(t);
+  return shapeProductType(t);
+}
+
+export function mockDeleteProductType(id: string): boolean {
+  const idx = store.productTypes.findIndex((t) => t.id === id);
+  if (idx === -1) return false;
+  store.productTypes.splice(idx, 1);
+  // FK behaviour: SET NULL على المنتجات
+  for (const p of store.products) {
+    if (p.productTypeId === id) p.productTypeId = null;
+  }
+  return true;
 }
 
 // ----------------------------------------------------

@@ -22,6 +22,7 @@ export async function GET() {
         brand: v.product.brand,
         branch: v.branch as BranchValue,
         size: v.size,
+        color: v.color ?? null,
         quantity: v.quantity,
         minQuantity: v.minQuantity,
       }))

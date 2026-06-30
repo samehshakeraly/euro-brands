@@ -155,15 +155,17 @@ export default function InventoryPage() {
         brand: product.brand,
         category: product.category,
         description: product.description,
-        sku: null,
         barcode: null,
         images: product.images,
+        productTypeId: product.productTypeId,
         variants: product.variants.map((v) => ({
           branch: v.branch,
           size: v.size,
+          color: v.color,
           quantity: v.quantity,
           minQuantity: v.minQuantity,
           price: v.price,
+          sku: null, // عند التكرار: ندَع التوليد التلقائي يُنشئ SKUs جديدة
         })),
       };
       const created = await apiPost<ProductDTO>("/api/products", payload);
@@ -486,9 +488,9 @@ function ProductCard({
             <Package className="h-10 w-10" />
           </div>
         )}
-        {product.sku && (
-          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white nums">
-            {product.sku}
+        {product.productType && (
+          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+            {product.productType.name}
           </span>
         )}
       </div>
@@ -581,9 +583,9 @@ function ProductListRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-medium text-text">{product.name}</p>
-          {product.sku && (
-            <span className="hidden text-xs text-muted nums sm:inline">
-              · {product.sku}
+          {product.productType && (
+            <span className="hidden text-xs text-muted sm:inline">
+              · {product.productType.name}
             </span>
           )}
         </div>
