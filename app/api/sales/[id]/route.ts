@@ -21,7 +21,7 @@ export async function GET(
         items: {
           include: {
             product: { select: { name: true, brand: true } },
-            variant: { select: { size: true } },
+            variant: { select: { size: true, color: true, sku: true } },
           },
         },
       },

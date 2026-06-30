@@ -155,15 +155,17 @@ export default function InventoryPage() {
         brand: product.brand,
         category: product.category,
         description: product.description,
-        sku: null,
         barcode: null,
         images: product.images,
+        productTypeId: product.productTypeId,
         variants: product.variants.map((v) => ({
           branch: v.branch,
           size: v.size,
+          color: v.color,
           quantity: v.quantity,
           minQuantity: v.minQuantity,
           price: v.price,
+          sku: null, // عند التكرار: ندَع التوليد التلقائي يُنشئ SKUs جديدة
         })),
       };
       const created = await apiPost<ProductDTO>("/api/products", payload);
