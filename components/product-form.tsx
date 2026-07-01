@@ -132,18 +132,18 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
   );
   const brandOptions = (brandsData ?? []).map((b) => b.name);
 
-  // أنواع المنتجات حسب الفئة المحددة
-  // فلترة دفاعية على العميل: تضمن عدم ظهور أنواع فئة قديمة أثناء نافذة
-  // إعادة الجلب (بين تغيير الفئة ووصول الاستجابة الجديدة من الخادم).
-  const { data: typesData, refetch: refetchTypes } = useFetch<
-    ProductTypeDTO[]
-  >(`/api/product-types?category=${category}`);
+  // أنواع المنتجات: تُجلَب مرة واحدة فقط (بدون ?category=) والقائمة صغيرة
+  // (25 نوعاً)، فالتبديل بين الفئات فوري بفلترة على العميل دون أي إعادة جلب
+  // ودون نافذة فراغ مؤقتة بين تغيير الفئة ووصول استجابة جديدة.
+  const {
+    data: typesData,
+    loading: typesLoading,
+    error: typesError,
+    refetch: refetchTypes,
+  } = useFetch<ProductTypeDTO[]>("/api/product-types");
   const typeOptions = (typesData ?? []).filter((t) => t.category === category);
 
   // عند تغيير الفئة: إن لم يعد النوع المختار ينتمي لها، نمسحه.
-  // نتحقق من تطابق الفئة أيضاً (لا فقط المعرف) حتى لا تُقبَل بيانات الفئة
-  // القديمة المتبقية في typesData أثناء نافذة إعادة الجلب. شرط typesData
-  // يمنع المسح المبكر أثناء التحميل الأول (وضع التعديل قبل وصول أول استجابة).
   useEffect(() => {
     if (
       productTypeId &&
@@ -153,6 +153,16 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
       setProductTypeId("");
     }
   }, [category, typesData, productTypeId]);
+
+  // نص العنصر الأول في قائمة الأنواع: يميّز التحميل/الخطأ/الفراغ الفعلي
+  // حتى لا يظهر تحميل حقيقي أو فشل في الجلب وكأنه ببساطة "لا توجد أنواع".
+  const typePlaceholder = typesLoading
+    ? "جاري التحميل…"
+    : typesError
+      ? "تعذّر التحميل"
+      : typeOptions.length === 0
+        ? "لا توجد أنواع لهذه الفئة"
+        : "— بدون نوع —";
 
   const selectedType = typeOptions.find((t) => t.id === productTypeId);
 
@@ -384,8 +394,9 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 className="input"
                 value={productTypeId}
                 onChange={(e) => setProductTypeId(e.target.value)}
+                disabled={typesLoading || !!typesError}
               >
-                <option value="">— بدون نوع —</option>
+                <option value="">{typePlaceholder}</option>
                 {typeOptions.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.code})
@@ -402,9 +413,22 @@ export function ProductForm({ initial }: { initial?: ProductDTO }) {
                 جديد
               </button>
             </div>
-            <p className="mt-1 text-xs text-muted">
-              كود النوع يُستخدم بادئةً لتوليد SKU التلقائي لكل صنف.
-            </p>
+            {typesError ? (
+              <p className="mt-1 text-xs text-danger">
+                تعذّر تحميل أنواع المنتجات.{" "}
+                <button
+                  type="button"
+                  onClick={() => refetchTypes()}
+                  className="font-medium underline"
+                >
+                  إعادة المحاولة
+                </button>
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted">
+                كود النوع يُستخدم بادئةً لتوليد SKU التلقائي لكل صنف.
+              </p>
+            )}
           </div>
 
           <div>
