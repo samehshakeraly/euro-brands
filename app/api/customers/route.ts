@@ -1,0 +1,92 @@
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { ok, fail, handleServerError } from "@/lib/api";
+import { toCustomerDTO } from "@/lib/serializers";
+import { parseCustomerInput, ValidationError } from "@/lib/validate";
+import {
+  MOCK_MODE,
+  mockListCustomers,
+  mockCreateCustomer,
+} from "@/lib/mock-store";
+import type { CustomerListResponse } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+// GET /api/customers — قائمة العملاء مع البحث والترتيب والتصفح
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    if (MOCK_MODE) return ok(mockListCustomers(searchParams));
+
+    const search = searchParams.get("search")?.trim();
+    const sort = searchParams.get("sort"); // totalSpent | lastVisitAt
+    const page = Math.max(1, Number(searchParams.get("page")) || 1);
+    const pageSize = Math.min(
+      Math.max(Number(searchParams.get("pageSize")) || 20, 1),
+      100
+    );
+
+    const where: Prisma.CustomerWhereInput = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search } },
+      ];
+    }
+
+    const orderBy: Prisma.CustomerOrderByWithRelationInput =
+      sort === "totalSpent"
+        ? { totalSpent: "desc" }
+        : sort === "lastVisitAt"
+          ? { lastVisitAt: "desc" }
+          : { createdAt: "desc" };
+
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.customer.count({ where }),
+    ]);
+
+    const response: CustomerListResponse = {
+      customers: customers.map(toCustomerDTO),
+      total,
+      page,
+      pageSize,
+    };
+    return ok(response);
+  } catch (error) {
+    return handleServerError(error);
+  }
+}
+
+// POST /api/customers — إنشاء عميل جديد
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const input = parseCustomerInput(body);
+
+    if (MOCK_MODE) return ok(mockCreateCustomer(input), 201);
+
+    const existing = await prisma.customer.findUnique({
+      where: { phone: input.phone },
+    });
+    if (existing) throw new ValidationError("يوجد عميل مسجّل بهذا الرقم بالفعل");
+
+    const created = await prisma.customer.create({
+      data: {
+        name: input.name,
+        phone: input.phone,
+        branch: input.branch ?? null,
+        notes: input.notes ?? null,
+      },
+    });
+    return ok(toCustomerDTO(created), 201);
+  } catch (error) {
+    if (error instanceof ValidationError) return fail(error.message, 422);
+    return handleServerError(error);
+  }
+}

@@ -1,6 +1,7 @@
 import type {
   ActivityLog,
   Brand,
+  Customer,
   Product,
   ProductType,
   ProductVariant,
@@ -11,6 +12,7 @@ import type { BranchValue, CategoryValue } from "./constants";
 import type {
   ActivityLogDTO,
   BrandDTO,
+  CustomerDTO,
   ProductDTO,
   ProductTypeDTO,
   SaleDTO,
@@ -19,6 +21,21 @@ import type {
 
 export function toBrandDTO(b: Brand): BrandDTO {
   return { id: b.id, name: b.name, category: b.category as CategoryValue };
+}
+
+export function toCustomerDTO(c: Customer): CustomerDTO {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    totalSpent: c.totalSpent,
+    visitCount: c.visitCount,
+    lastVisitAt: c.lastVisitAt ? c.lastVisitAt.toISOString() : null,
+    branch: (c.branch as BranchValue | null) ?? null,
+    notes: c.notes ?? null,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
 }
 
 export function toActivityDTO(a: ActivityLog): ActivityLogDTO {

@@ -15,9 +15,12 @@ import {
   type PaymentMethodValue,
   type TransferMethodValue,
 } from "./constants";
+import { isCompleteEgyPhone, digitsOnly } from "./input-validators";
 import type {
   ActivityLogInput,
   BrandInput,
+  CustomerInput,
+  CustomerUpdateInput,
   DeliveryInput,
   ImportRow,
   ProductInput,
@@ -241,13 +244,23 @@ export function parseSaleInput(body: any): SaleInput {
     delivery = parseDeliveryInput(body.delivery);
   }
 
+  const customerName = asString(body?.customerName) || null;
+  const customerPhone = asString(body?.customerPhone) || null;
+  const saveAsNewCustomer = !!body?.saveAsNewCustomer;
+  if (saveAsNewCustomer) {
+    if (!customerPhone)
+      throw new ValidationError("رقم هاتف العميل مطلوب لحفظه كعميل جديد");
+    if (!customerName)
+      throw new ValidationError("اسم العميل مطلوب لحفظه كعميل جديد");
+  }
+
   return {
     branch: branch as BranchValue,
     items,
     discountType,
     discountValue,
-    customerName: asString(body?.customerName) || null,
-    customerPhone: asString(body?.customerPhone) || null,
+    customerName,
+    customerPhone,
     customerNotes: asString(body?.customerNotes) || null,
     paymentMethod: paymentMethod as PaymentMethodValue,
     transferMethod,
@@ -255,7 +268,48 @@ export function parseSaleInput(body: any): SaleInput {
     paidAmount,
     cashierName: asString(body?.cashierName) || null,
     delivery,
+    saveAsNewCustomer,
   };
+}
+
+// التحقق من مدخلات العميل (إنشاء)
+export function parseCustomerInput(body: any): CustomerInput {
+  const name = asString(body?.name);
+  const phone = digitsOnly(asString(body?.phone));
+  if (!name) throw new ValidationError("اسم العميل مطلوب");
+  if (!isCompleteEgyPhone(phone))
+    throw new ValidationError("رقم الهاتف غير صحيح — يجب أن يكون 11 رقماً");
+
+  const branch = asString(body?.branch) || null;
+  if (branch && !BRANCHES.includes(branch as BranchValue))
+    throw new ValidationError("الفرع غير صحيح");
+
+  return {
+    name,
+    phone,
+    branch: (branch as BranchValue | null) ?? null,
+    notes: asString(body?.notes) || null,
+  };
+}
+
+// التحقق من مدخلات تعديل العميل (اسم/ملاحظات/فرع فقط)
+export function parseCustomerUpdateInput(body: any): CustomerUpdateInput {
+  const out: CustomerUpdateInput = {};
+
+  if (body?.name !== undefined) {
+    const name = asString(body.name);
+    if (!name) throw new ValidationError("اسم العميل مطلوب");
+    out.name = name;
+  }
+  if (body?.notes !== undefined) out.notes = asString(body.notes) || null;
+  if (body?.branch !== undefined) {
+    const branch = asString(body.branch) || null;
+    if (branch && !BRANCHES.includes(branch as BranchValue))
+      throw new ValidationError("الفرع غير صحيح");
+    out.branch = (branch as BranchValue | null) ?? null;
+  }
+
+  return out;
 }
 
 // التحقق من مدخلات سجل النشاط

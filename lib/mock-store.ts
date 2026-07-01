@@ -28,6 +28,10 @@ import type {
   ActivityLogDTO,
   ActivityLogInput,
   BrandDTO,
+  CustomerDTO,
+  CustomerInput,
+  CustomerListResponse,
+  CustomerUpdateInput,
   DashboardStats,
   ImportResult,
   ImportRow,
@@ -137,12 +141,26 @@ interface MBrand {
   category: CategoryValue;
 }
 
+interface MCustomer {
+  id: string;
+  name: string;
+  phone: string;
+  totalSpent: number;
+  visitCount: number;
+  lastVisitAt: Date | null;
+  branch: BranchValue | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 interface Store {
   products: MProduct[];
   sales: MSale[];
   brands: MBrand[];
   productTypes: MProductType[];
   activityLogs: MActivityLog[];
+  customers: MCustomer[];
   seq: number;
 }
 
@@ -170,6 +188,7 @@ function buildStore(): Store {
     brands: [],
     productTypes: [],
     activityLogs: [],
+    customers: [],
     seq: 0,
   };
   const id = (p: string) => `${p}_${++store.seq}`;
@@ -556,6 +575,38 @@ function buildStore(): Store {
     }
   }
 
+  // عملاء تجريبيون: مُشتقّون من الفواتير المكتملة ذات اسم/هاتف
+  const custByPhone = new Map<string, MCustomer>();
+  for (const s of store.sales) {
+    if (s.status === "CANCELLED") continue;
+    const name = (s.customerName ?? "").trim();
+    const phone = (s.customerPhone ?? "").trim();
+    if (!name || !phone) continue;
+    const existing = custByPhone.get(phone);
+    if (existing) {
+      existing.totalSpent = round2(existing.totalSpent + s.finalAmount);
+      existing.visitCount += 1;
+      if (!existing.lastVisitAt || s.createdAt > existing.lastVisitAt) {
+        existing.lastVisitAt = s.createdAt;
+        existing.branch = s.branch;
+      }
+    } else {
+      custByPhone.set(phone, {
+        id: id("cust"),
+        name,
+        phone,
+        totalSpent: round2(s.finalAmount),
+        visitCount: 1,
+        lastVisitAt: s.createdAt,
+        branch: s.branch,
+        notes: null,
+        createdAt: s.createdAt,
+        updatedAt: s.createdAt,
+      });
+    }
+  }
+  store.customers = [...custByPhone.values()];
+
   // سجلات نشاط تجريبية
   const seedLogs: [string, string, string, string | null, number][] = [
     ["مدير النظام", "ADMIN", "تسجيل دخول", null, 0],
@@ -704,6 +755,53 @@ function shapeSale(s: MSale): SaleDTO {
     }),
     itemsCount: s.items.reduce((sum, it) => sum + it.quantity, 0),
   };
+}
+
+function shapeCustomer(c: MCustomer): CustomerDTO {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    totalSpent: c.totalSpent,
+    visitCount: c.visitCount,
+    lastVisitAt: c.lastVisitAt ? c.lastVisitAt.toISOString() : null,
+    branch: c.branch,
+    notes: c.notes,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
+
+// تحديث/إنشاء عميل تلقائياً عند تأكيد بيعة برقم هاتف (مطابق لمنطق /api/sales الحقيقي)
+function upsertCustomerOnSale(input: {
+  phone: string | null;
+  name: string | null;
+  branch: BranchValue;
+  finalAmount: number;
+  saveAsNewCustomer: boolean;
+}) {
+  if (!input.phone) return;
+  const existing = store.customers.find((c) => c.phone === input.phone);
+  if (existing) {
+    existing.totalSpent = round2(existing.totalSpent + input.finalAmount);
+    existing.visitCount += 1;
+    existing.lastVisitAt = new Date();
+    existing.updatedAt = new Date();
+  } else if (input.saveAsNewCustomer) {
+    const now = new Date();
+    store.customers.unshift({
+      id: nextId("cust"),
+      name: input.name || "عميل",
+      phone: input.phone,
+      totalSpent: round2(input.finalAmount),
+      visitCount: 1,
+      lastVisitAt: now,
+      branch: input.branch,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 }
 
 // ----------------------------------------------------
@@ -1312,6 +1410,81 @@ export function mockCreateActivity(input: ActivityLogInput): ActivityLogDTO {
 }
 
 // ----------------------------------------------------
+//  عمليات العملاء
+// ----------------------------------------------------
+export function mockListCustomers(sp: URLSearchParams): CustomerListResponse {
+  const search = sp.get("search")?.trim().toLowerCase();
+  const sort = sp.get("sort"); // totalSpent | lastVisitAt
+  const page = Math.max(1, Number(sp.get("page")) || 1);
+  const pageSize = Math.min(Math.max(Number(sp.get("pageSize")) || 20, 1), 100);
+
+  let list = [...store.customers];
+  if (search) {
+    list = list.filter(
+      (c) => c.name.toLowerCase().includes(search) || c.phone.includes(search)
+    );
+  }
+
+  if (sort === "totalSpent") list.sort((a, b) => b.totalSpent - a.totalSpent);
+  else if (sort === "lastVisitAt")
+    list.sort(
+      (a, b) => (b.lastVisitAt?.getTime() ?? 0) - (a.lastVisitAt?.getTime() ?? 0)
+    );
+  else list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  const total = list.length;
+  const start = (page - 1) * pageSize;
+  const customers = list.slice(start, start + pageSize).map(shapeCustomer);
+
+  return { customers, total, page, pageSize };
+}
+
+export function mockGetCustomer(
+  id: string
+): (CustomerDTO & { sales: SaleDTO[] }) | null {
+  const c = store.customers.find((x) => x.id === id);
+  if (!c) return null;
+  const sales = store.sales
+    .filter((s) => s.customerPhone === c.phone)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map(shapeSale);
+  return { ...shapeCustomer(c), sales };
+}
+
+export function mockCreateCustomer(input: CustomerInput): CustomerDTO {
+  if (store.customers.some((c) => c.phone === input.phone))
+    throw new ValidationError("يوجد عميل مسجّل بهذا الرقم بالفعل");
+  const now = new Date();
+  const c: MCustomer = {
+    id: nextId("cust"),
+    name: input.name,
+    phone: input.phone,
+    totalSpent: 0,
+    visitCount: 0,
+    lastVisitAt: null,
+    branch: input.branch ?? null,
+    notes: input.notes ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.customers.unshift(c);
+  return shapeCustomer(c);
+}
+
+export function mockUpdateCustomer(
+  id: string,
+  input: CustomerUpdateInput
+): CustomerDTO | null {
+  const c = store.customers.find((x) => x.id === id);
+  if (!c) return null;
+  if (input.name !== undefined) c.name = input.name;
+  if (input.notes !== undefined) c.notes = input.notes;
+  if (input.branch !== undefined) c.branch = input.branch;
+  c.updatedAt = new Date();
+  return shapeCustomer(c);
+}
+
+// ----------------------------------------------------
 //  عمليات الفواتير
 // ----------------------------------------------------
 export function mockListSales(sp: URLSearchParams): SaleDTO[] {
@@ -1451,6 +1624,15 @@ export function mockCreateSale(input: SaleInput): SaleDTO {
     items,
   };
   store.sales.push(sale);
+
+  upsertCustomerOnSale({
+    phone: input.customerPhone ?? null,
+    name: input.customerName ?? null,
+    branch: input.branch,
+    finalAmount: sale.finalAmount,
+    saveAsNewCustomer: !!input.saveAsNewCustomer,
+  });
+
   return shapeSale(sale);
 }
 

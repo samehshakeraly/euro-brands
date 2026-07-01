@@ -18,6 +18,10 @@ import {
   mockSeedProductTypes,
   mockListActivity,
   mockCreateActivity,
+  mockListCustomers,
+  mockGetCustomer,
+  mockCreateCustomer,
+  mockUpdateCustomer,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -31,6 +35,8 @@ import {
 import {
   parseActivityInput,
   parseBrandInput,
+  parseCustomerInput,
+  parseCustomerUpdateInput,
   parseDeliveryStatus,
   parseImportRows,
   parseProductInput,
@@ -119,6 +125,29 @@ export async function mockApi<T>(
     const removed = mockDeleteProductType(decodeURIComponent(ptMatch[1]));
     if (!removed) throw new Error("النوع غير موجود");
     return { id: ptMatch[1] } as T;
+  }
+
+  // /api/customers
+  if (path === "/api/customers") {
+    if (method === "GET") return mockListCustomers(sp) as T;
+    if (method === "POST")
+      return mockCreateCustomer(parseCustomerInput(body)) as T;
+  }
+
+  // /api/customers/[id]
+  const customerMatch = path.match(/^\/api\/customers\/([^/]+)$/);
+  if (customerMatch) {
+    const id = decodeURIComponent(customerMatch[1]);
+    if (method === "GET") {
+      const dto = mockGetCustomer(id);
+      if (!dto) throw new Error("العميل غير موجود");
+      return dto as T;
+    }
+    if (method === "PUT") {
+      const dto = mockUpdateCustomer(id, parseCustomerUpdateInput(body));
+      if (!dto) throw new Error("العميل غير موجود");
+      return dto as T;
+    }
   }
 
   // /api/sales

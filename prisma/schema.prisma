@@ -203,6 +203,24 @@ model SaleItem {
   @@index([productId])
 }
 
+// العملاء — سجل العملاء وتاريخ زياراتهم وإجمالي إنفاقهم
+model Customer {
+  id          String    @id @default(cuid())
+  name        String
+  phone       String    @unique
+  totalSpent  Float     @default(0)
+  visitCount  Int       @default(0)
+  lastVisitAt DateTime?
+  branch      Branch? // الفرع الذي يتردد عليه غالباً
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([totalSpent])
+  @@index([lastVisitAt])
+}
+
 // سجل نشاط المستخدمين (تسجيل دخول، إنشاء/إلغاء فاتورة، عمليات المنتجات، التوصيل)
 model ActivityLog {
   id        String   @id @default(cuid())

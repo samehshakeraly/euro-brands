@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { apiGet } from "@/lib/client";
@@ -58,6 +59,7 @@ const NAV_ITEMS: {
     icon: ReceiptText,
     roles: ["ADMIN"],
   },
+  { href: "/customers", label: "العملاء", icon: Users, roles: ["ADMIN"] },
   {
     href: "/settings",
     label: "الإعدادات",

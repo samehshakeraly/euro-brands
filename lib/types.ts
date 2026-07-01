@@ -208,6 +208,45 @@ export interface SaleInput {
   paidAmount?: number | null; // المبلغ المدفوع الآن (للدفع الجزئي)
   cashierName?: string | null; // اسم الكاشير (من الجلسة)
   delivery?: DeliveryInput | null; // بيانات التوصيل (اختيارية)
+  saveAsNewCustomer?: boolean; // احفظ رقم/اسم العميل كعميل جديد إن لم يكن مسجلاً
+}
+
+// العملاء
+export interface CustomerDTO {
+  id: string;
+  name: string;
+  phone: string;
+  totalSpent: number;
+  visitCount: number;
+  lastVisitAt: string | null;
+  branch: BranchValue | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerDetailDTO extends CustomerDTO {
+  sales: SaleDTO[]; // تاريخ المشتريات الكامل
+}
+
+export interface CustomerInput {
+  name: string;
+  phone: string;
+  branch?: BranchValue | null;
+  notes?: string | null;
+}
+
+export interface CustomerUpdateInput {
+  name?: string;
+  notes?: string | null;
+  branch?: BranchValue | null;
+}
+
+export interface CustomerListResponse {
+  customers: CustomerDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 // سجل النشاط

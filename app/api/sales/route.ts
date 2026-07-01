@@ -171,6 +171,34 @@ export async function POST(req: Request) {
           });
           const saleNumber = (last?.saleNumber ?? 0) + 1;
 
+          // تحديث/إنشاء العميل تلقائياً برقم هاتفه (إن وُجد)
+          if (input.customerPhone) {
+            const existingCustomer = await tx.customer.findUnique({
+              where: { phone: input.customerPhone },
+            });
+            if (existingCustomer) {
+              await tx.customer.update({
+                where: { phone: input.customerPhone },
+                data: {
+                  totalSpent: { increment: finalAmount },
+                  visitCount: { increment: 1 },
+                  lastVisitAt: new Date(),
+                },
+              });
+            } else if (input.saveAsNewCustomer && input.customerName) {
+              await tx.customer.create({
+                data: {
+                  name: input.customerName,
+                  phone: input.customerPhone,
+                  branch: input.branch as Branch,
+                  totalSpent: finalAmount,
+                  visitCount: 1,
+                  lastVisitAt: new Date(),
+                },
+              });
+            }
+          }
+
           return tx.sale.create({
             data: {
               saleNumber,
