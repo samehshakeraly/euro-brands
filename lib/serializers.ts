@@ -1,15 +1,61 @@
 import type {
+  ActivityLog,
   Brand,
+  Customer,
   Product,
+  ProductType,
   ProductVariant,
   Sale,
   SaleItem,
 } from "@prisma/client";
 import type { BranchValue, CategoryValue } from "./constants";
-import type { BrandDTO, ProductDTO, SaleDTO, VariantDTO } from "./types";
+import type {
+  ActivityLogDTO,
+  BrandDTO,
+  CustomerDTO,
+  ProductDTO,
+  ProductTypeDTO,
+  SaleDTO,
+  VariantDTO,
+} from "./types";
 
 export function toBrandDTO(b: Brand): BrandDTO {
   return { id: b.id, name: b.name, category: b.category as CategoryValue };
+}
+
+export function toCustomerDTO(c: Customer): CustomerDTO {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    totalSpent: c.totalSpent,
+    visitCount: c.visitCount,
+    lastVisitAt: c.lastVisitAt ? c.lastVisitAt.toISOString() : null,
+    branch: (c.branch as BranchValue | null) ?? null,
+    notes: c.notes ?? null,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
+
+export function toActivityDTO(a: ActivityLog): ActivityLogDTO {
+  return {
+    id: a.id,
+    userName: a.userName,
+    userRole: a.userRole,
+    action: a.action,
+    details: a.details ?? null,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+export function toProductTypeDTO(t: ProductType): ProductTypeDTO {
+  return {
+    id: t.id,
+    name: t.name,
+    code: t.code,
+    category: t.category as CategoryValue,
+  };
 }
 
 export function toVariantDTO(v: ProductVariant): VariantDTO {
@@ -17,14 +63,20 @@ export function toVariantDTO(v: ProductVariant): VariantDTO {
     id: v.id,
     productId: v.productId,
     size: v.size,
+    color: v.color ?? null,
     quantity: v.quantity,
     minQuantity: v.minQuantity,
     branch: v.branch as BranchValue,
     price: v.price,
+    sku: v.sku ?? null,
+    skuManual: v.skuManual,
   };
 }
 
-type ProductWithVariants = Product & { variants: ProductVariant[] };
+type ProductWithVariants = Product & {
+  variants: ProductVariant[];
+  productType?: ProductType | null;
+};
 
 export function toProductDTO(
   p: ProductWithVariants,
@@ -40,6 +92,8 @@ export function toProductDTO(
     sku: p.sku,
     barcode: p.barcode,
     images: p.images,
+    productTypeId: p.productTypeId ?? null,
+    productType: p.productType ? toProductTypeDTO(p.productType) : null,
     variants,
     totalQuantity: variants.reduce((sum, v) => sum + v.quantity, 0),
     ...(soldCount !== undefined ? { soldCount } : {}),
@@ -50,7 +104,7 @@ export function toProductDTO(
 
 type SaleItemWithRefs = SaleItem & {
   product: { name: string; brand: string };
-  variant: { size: string };
+  variant: { size: string; color: string | null; sku: string | null };
 };
 type SaleWithItems = Sale & { items: SaleItemWithRefs[] };
 
@@ -71,6 +125,7 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
     invoiceNotes: s.invoiceNotes,
     paidAmount: s.paidAmount,
     remainingAmount: s.remainingAmount,
+    cashierName: s.cashierName ?? null,
     status: s.status as SaleDTO["status"],
     cancellationReason: s.cancellationReason,
     isDelivery: s.isDelivery,
@@ -91,6 +146,8 @@ export function toSaleDTO(s: SaleWithItems): SaleDTO {
       productName: it.product.name,
       brand: it.product.brand,
       size: it.variant.size,
+      color: it.variant.color ?? null,
+      sku: it.variant.sku ?? null,
     })),
     itemsCount: s.items.reduce((sum, it) => sum + it.quantity, 0),
   };

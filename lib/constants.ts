@@ -135,3 +135,59 @@ export function sizesForCategory(category: CategoryValue): readonly string[] {
 
 export const CURRENCY = "ج.م";
 export const LOW_STOCK_THRESHOLD = 3; // عتبة تحذير قلة المخزون
+
+// ----------------------------------------------------
+//  أنواع المنتجات الافتراضية (القائمة الموحّدة)
+// ----------------------------------------------------
+// لكل نوع اسم عربي وكود لاتيني قصير يُستخدم بادئةً في توليد SKU.
+// تُزرع هذه الأنواع تلقائياً (idempotent): تُضاف الناقصة ويُحدَّث الكود إن
+// تغيّر، دون حذف أي أنواع أضافها المستخدم.
+export interface DefaultProductType {
+  category: CategoryValue;
+  name: string;
+  code: string;
+}
+
+export const DEFAULT_PRODUCT_TYPES: DefaultProductType[] = [
+  // ملابس
+  { category: "CLOTHES", name: "تيشرت", code: "TSH" },
+  { category: "CLOTHES", name: "بولو", code: "POL" },
+  { category: "CLOTHES", name: "هودي", code: "HOD" },
+  { category: "CLOTHES", name: "سويت شيرت", code: "SWT" },
+  { category: "CLOTHES", name: "جاكيت", code: "JKT" },
+  { category: "CLOTHES", name: "بليزر", code: "BLZ" },
+  { category: "CLOTHES", name: "قميص", code: "SHRT" },
+  { category: "CLOTHES", name: "اخرى", code: "OTH" },
+  // بناطيل
+  { category: "PANTS", name: "جينز", code: "JNS" },
+  { category: "PANTS", name: "سوت بانتس", code: "SWP" },
+  { category: "PANTS", name: "شورت", code: "SHO" },
+  { category: "PANTS", name: "كارجو", code: "CRG" },
+  { category: "PANTS", name: "ميوه", code: "MIW" },
+  { category: "PANTS", name: "اخرى", code: "OTH" },
+  // أحذية
+  { category: "SHOES", name: "سنيكرز", code: "SNK" },
+  { category: "SHOES", name: "صندل", code: "SND" },
+  { category: "SHOES", name: "بوت", code: "BOT" },
+  { category: "SHOES", name: "كلاسيك", code: "CLS" },
+  { category: "SHOES", name: "شبشب", code: "SHB" },
+  { category: "SHOES", name: "سليبر", code: "SLP" },
+  { category: "SHOES", name: "اخرى", code: "OTH" },
+  // عطور
+  { category: "PERFUMES", name: "عطر رجالي", code: "PFMM" },
+  { category: "PERFUMES", name: "عطر حريمي", code: "PFMW" },
+  { category: "PERFUMES", name: "عطر مشترك", code: "PFMU" },
+  { category: "PERFUMES", name: "اخرى", code: "OTH" },
+];
+
+// أنواع أُزيلت من القائمة الافتراضية: يُعاد توجيه منتجاتها إلى نوع بديل ثم
+// يُحذف النوع القديم (هجرة بيانات لمرة واحدة، وليست حذفاً لنوع أضافه المستخدم).
+export interface RenamedProductType {
+  category: CategoryValue;
+  from: string;
+  to: string;
+}
+
+export const RENAMED_PRODUCT_TYPES: RenamedProductType[] = [
+  { category: "CLOTHES", from: "بلوزة", to: "قميص" },
+];

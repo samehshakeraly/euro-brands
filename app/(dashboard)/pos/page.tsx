@@ -19,19 +19,28 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
-import { apiPost } from "@/lib/client";
+import { apiGet, apiPost } from "@/lib/client";
+import { getSession } from "@/lib/auth";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { ReceiptModal } from "@/components/receipt-modal";
 import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { Spinner, PageLoader } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  NumberInput,
+  PhoneInput,
+  TextOnlyInput,
+} from "@/components/ui/inputs";
+import { isCompleteEgyPhone } from "@/lib/input-validators";
 import { cn } from "@/lib/cn";
 import { calcDiscount, round2 } from "@/lib/sale-utils";
 import {
   formatCurrency,
   formatDateTime,
   formatNumber,
+  formatSaleNumber,
 } from "@/lib/format";
 import {
   BRANCHES,
@@ -51,7 +60,7 @@ import {
   type PaymentMethodValue,
   type TransferMethodValue,
 } from "@/lib/constants";
-import type { ProductDTO, SaleDTO } from "@/lib/types";
+import type { CustomerDTO, CustomerListResponse, ProductDTO, SaleDTO } from "@/lib/types";
 
 interface CartItem {
   variantId: string;
@@ -59,6 +68,8 @@ interface CartItem {
   productName: string;
   brand: string;
   size: string;
+  color: string | null;
+  sku: string | null;
   unitPrice: number;
   available: number;
   quantity: number;
@@ -163,6 +174,10 @@ function PosRegister({
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
+  const [customerLookup, setCustomerLookup] = useState<CustomerDTO | null>(null);
+  const [customerNotFound, setCustomerNotFound] = useState(false);
+  const [customerLookupLoading, setCustomerLookupLoading] = useState(false);
+  const [saveAsNewCustomer, setSaveAsNewCustomer] = useState(false);
   const [invoiceNotes, setInvoiceNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>("CASH");
   const [transferMethod, setTransferMethod] = useState<TransferMethodValue | "">(
@@ -239,6 +254,8 @@ function PosRegister({
           productName: product.name,
           brand: product.brand,
           size: variant.size,
+          color: variant.color ?? null,
+          sku: variant.sku ?? null,
           unitPrice: variant.price,
           available: variant.quantity,
           quantity: 1,
@@ -270,6 +287,69 @@ function PosRegister({
     setCart((prev) => prev.filter((i) => i.variantId !== variantId));
   }
 
+  // تغيير رقم الهاتف يُلغي نتيجة أي بحث سابق عن عميل
+  function handlePhoneChange(value: string) {
+    setCustomerPhone(value);
+    if (customerLookup || customerNotFound) {
+      setCustomerLookup(null);
+      setCustomerNotFound(false);
+      setSaveAsNewCustomer(false);
+    }
+  }
+
+  async function lookupCustomer() {
+    if (!isCompleteEgyPhone(customerPhone))
+      return toast.error("أدخل رقم هاتف مكتمل أولاً");
+    setCustomerLookupLoading(true);
+    setCustomerLookup(null);
+    setCustomerNotFound(false);
+    try {
+      const res = await apiGet<CustomerListResponse>(
+        `/api/customers?search=${encodeURIComponent(customerPhone)}&pageSize=5`
+      );
+      const exact = res.customers.find((c) => c.phone === customerPhone);
+      if (exact) {
+        setCustomerLookup(exact);
+        setCustomerName(exact.name);
+        setSaveAsNewCustomer(false);
+        toast.success("تم العثور على العميل");
+      } else {
+        setCustomerNotFound(true);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "تعذّر البحث عن العميل");
+    } finally {
+      setCustomerLookupLoading(false);
+    }
+  }
+
+  // مسح الباركود: بحث فوري بنفس رقم الباركود، وإضافة تلقائية للسلة إن كان
+  // هناك صنف مطابق واحد فقط في هذا الفرع، وإلا تُعرض النتائج للاختيار.
+  async function handleBarcodeScan(code: string) {
+    try {
+      const results = await apiGet<ProductDTO[]>(
+        `/api/products?branch=${branch}&search=${encodeURIComponent(code)}`
+      );
+      const matches = results.flatMap((p) =>
+        p.variants.map((v) => ({ product: p, variant: v }))
+      );
+      if (matches.length === 1) {
+        addVariant(matches[0].product, matches[0].variant);
+        toast.success(
+          `تمت إضافة ${matches[0].product.name} (${matches[0].variant.size}) للفاتورة`
+        );
+        setTerm("");
+      } else if (matches.length === 0) {
+        toast.error("لم يتم العثور على منتج بهذا الباركود");
+        setTerm(code);
+      } else {
+        setTerm(code);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "تعذّر البحث عن الباركود");
+    }
+  }
+
   function resetSale() {
     setCart([]);
     setDiscountType("NONE");
@@ -277,6 +357,9 @@ function PosRegister({
     setCustomerName("");
     setCustomerPhone("");
     setCustomerNotes("");
+    setCustomerLookup(null);
+    setCustomerNotFound(false);
+    setSaveAsNewCustomer(false);
     setInvoiceNotes("");
     setPaymentMethod("CASH");
     setTransferMethod("");
@@ -387,6 +470,8 @@ function PosRegister({
 
   async function confirmSale() {
     if (cart.length === 0) return toast.error("الفاتورة فارغة");
+    if (customerPhone && !isCompleteEgyPhone(customerPhone))
+      return toast.error("رقم الهاتف غير مكتمل — يجب أن يكون 11 رقماً");
     if (paymentMethod === "TRANSFER" && !transferMethod)
       return toast.error("اختر طريقة التحويل");
     if (deliveryOn) {
@@ -411,6 +496,8 @@ function PosRegister({
         paymentMethod,
         transferMethod: paymentMethod === "TRANSFER" ? transferMethod : null,
         paidAmount: partialOn ? paidAmount : null,
+        cashierName: getSession()?.name ?? null,
+        saveAsNewCustomer: !customerLookup && customerNotFound && saveAsNewCustomer,
         delivery:
           deliveryOn && orderSource && deliveryMethod
             ? {
@@ -426,6 +513,12 @@ function PosRegister({
             : null,
       });
       setReceipt(sale);
+      void logActivity(
+        ACTIVITY_ACTIONS.CREATE_SALE,
+        `فاتورة ${formatSaleNumber(sale.saleNumber)} — ${formatCurrency(
+          sale.finalAmount
+        )}`
+      );
       resetSale();
       refetch();
     } catch (e) {
@@ -543,7 +636,8 @@ function PosRegister({
                                   : "hover:border-accent hover:text-accent"
                               )}
                             >
-                              {v.size}({v.quantity})
+                              {v.size}
+                              {v.color ? `/${v.color}` : ""} ({v.quantity})
                             </button>
                           ))}
                         </div>
@@ -632,7 +726,9 @@ function PosRegister({
                           {item.productName}
                         </p>
                         <p className="text-xs text-muted">
-                          مقاس {item.size} · {formatCurrency(item.unitPrice)}
+                          مقاس {item.size}
+                          {item.color ? ` / ${item.color}` : ""} ·{" "}
+                          {formatCurrency(item.unitPrice)}
                         </p>
                       </div>
                       <button
@@ -652,13 +748,11 @@ function PosRegister({
                         >
                           <Minus className="h-4 w-4" />
                         </button>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          min={1}
+                        <NumberInput
+                          value={String(item.quantity)}
                           max={item.available}
-                          onChange={(e) =>
-                            setQty(item.variantId, Number(e.target.value))
+                          onChange={(v) =>
+                            setQty(item.variantId, Number(v) || 1)
                           }
                           className="input h-10 w-16 px-1 text-center nums"
                         />
@@ -686,18 +780,81 @@ function PosRegister({
                 بيانات العميل (اختياري)
               </summary>
               <div className="space-y-2 border-t p-3">
-                <input
+                <TextOnlyInput
                   className="input"
                   placeholder="اسم العميل"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={setCustomerName}
                 />
-                <input
-                  className="input"
-                  placeholder="رقم الهاتف"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                />
+                <div className="flex items-start gap-2">
+                  <PhoneInput
+                    className="flex-1"
+                    value={customerPhone}
+                    onChange={handlePhoneChange}
+                  />
+                  <button
+                    type="button"
+                    onClick={lookupCustomer}
+                    disabled={
+                      customerLookupLoading || !isCompleteEgyPhone(customerPhone)
+                    }
+                    className="btn btn-secondary h-11 shrink-0 text-xs"
+                    title="بحث عن عميل"
+                  >
+                    {customerLookupLoading ? (
+                      <Spinner className="h-4 w-4" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                    بحث عن عميل
+                  </button>
+                </div>
+
+                {customerLookup && (
+                  <div className="rounded-lg border border-accent/30 bg-accent-soft p-3">
+                    <p className="text-xs font-bold text-accent">عميل مسجّل</p>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
+                      <div>
+                        <p className="text-muted">الزيارات</p>
+                        <p className="mt-0.5 font-bold text-text nums">
+                          {formatNumber(customerLookup.visitCount)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted">الإنفاق</p>
+                        <p className="mt-0.5 font-bold text-text nums">
+                          {formatCurrency(customerLookup.totalSpent)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted">آخر زيارة</p>
+                        <p className="mt-0.5 text-text nums">
+                          {customerLookup.lastVisitAt
+                            ? formatDateTime(customerLookup.lastVisitAt)
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {customerNotFound && (
+                  <div className="rounded-lg border p-3">
+                    <p className="text-xs text-muted">
+                      لا يوجد عميل مسجّل بهذا الرقم.
+                    </p>
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-medium text-text">
+                      <input
+                        type="checkbox"
+                        checked={saveAsNewCustomer}
+                        onChange={(e) => setSaveAsNewCustomer(e.target.checked)}
+                        className="h-4 w-4 accent-[#6c63ff]"
+                      />
+                      حفظ كعميل جديد
+                    </label>
+                  </div>
+                )}
+
                 <textarea
                   className="input min-h-[56px] resize-y"
                   placeholder="ملاحظات العميل"
@@ -778,13 +935,13 @@ function PosRegister({
                   <option value="FIXED">مبلغ ثابت</option>
                 </select>
                 {discountType !== "NONE" && (
-                  <input
-                    type="number"
-                    min={0}
+                  <NumberInput
+                    decimal
+                    max={discountType === "PERCENTAGE" ? 100 : undefined}
                     className="input nums"
                     placeholder={discountType === "PERCENTAGE" ? "% النسبة" : "المبلغ"}
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
+                    onChange={setDiscountValue}
                   />
                 )}
               </div>
@@ -852,11 +1009,11 @@ function PosRegister({
                       <label className="mb-1 block text-xs text-muted">
                         رقم التتبع (Bosta)
                       </label>
-                      <input
+                      <NumberInput
                         className="input nums"
-                        placeholder="مثال: BST-1234567"
+                        placeholder="مثال: 1234567"
                         value={trackingNumber}
-                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        onChange={setTrackingNumber}
                       />
                     </div>
                   )}
@@ -903,13 +1060,12 @@ function PosRegister({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div>
                     <span className="mb-1 block text-xs text-muted">المبلغ المدفوع</span>
-                    <input
-                      type="number"
-                      min={0}
+                    <NumberInput
+                      decimal
                       max={finalAmount}
                       className="input nums"
                       value={paidInput}
-                      onChange={(e) => setPaidInput(e.target.value)}
+                      onChange={setPaidInput}
                     />
                   </div>
                   <div>
@@ -1012,8 +1168,7 @@ function PosRegister({
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onScan={(code) => {
-          setTerm(code);
-          setScannerOpen(false);
+          void handleBarcodeScan(code);
         }}
       />
 
@@ -1123,7 +1278,10 @@ function SearchResult({
                 inCart > 0 && !out && "border-accent bg-accent-soft text-accent"
               )}
             >
-              <span className="nums">{v.size}</span>
+              <span className="nums">
+                {v.size}
+                {v.color ? ` / ${v.color}` : ""}
+              </span>
               <span className="mr-1 text-xs text-muted nums">
                 ({out ? "نفذ" : v.quantity})
               </span>

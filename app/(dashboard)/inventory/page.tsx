@@ -18,6 +18,7 @@ import {
 import toast from "react-hot-toast";
 import { useFetch } from "@/lib/use-fetch";
 import { apiDelete, apiPost } from "@/lib/client";
+import { logActivity, ACTIVITY_ACTIONS } from "@/lib/activity";
 import { ImportInventoryModal } from "@/components/import-inventory-modal";
 import { AddBrandModal } from "@/components/add-brand-modal";
 import { PageHeader } from "@/components/ui/page-header";
@@ -44,7 +45,6 @@ interface Filters {
   category: string;
   brand: string;
   size: string;
-  image: "" | "with" | "without";
 }
 type SortKey = "newest" | "mostSold" | "lowestQty";
 
@@ -54,7 +54,6 @@ const EMPTY_FILTERS: Filters = {
   category: "",
   brand: "",
   size: "",
-  image: "",
 };
 
 export default function InventoryPage() {
@@ -112,8 +111,6 @@ export default function InventoryPage() {
         return false;
       if (filters.category && p.category !== filters.category) return false;
       if (filters.brand && p.brand !== filters.brand) return false;
-      if (filters.image === "with" && p.images.length === 0) return false;
-      if (filters.image === "without" && p.images.length > 0) return false;
       const variantMatch = p.variants.some(
         (v) =>
           (!filters.branch || v.branch === filters.branch) &&
@@ -137,6 +134,7 @@ export default function InventoryPage() {
     setDeleting(true);
     try {
       await apiDelete(`/api/products/${toDelete.id}`);
+      void logActivity(ACTIVITY_ACTIONS.DELETE_PRODUCT, toDelete.name);
       toast.success("تم حذف المنتج بنجاح");
       setToDelete(null);
       refetch();
@@ -155,15 +153,17 @@ export default function InventoryPage() {
         brand: product.brand,
         category: product.category,
         description: product.description,
-        sku: null,
         barcode: null,
         images: product.images,
+        productTypeId: product.productTypeId,
         variants: product.variants.map((v) => ({
           branch: v.branch,
           size: v.size,
+          color: v.color,
           quantity: v.quantity,
           minQuantity: v.minQuantity,
           price: v.price,
+          sku: null, // عند التكرار: ندَع التوليد التلقائي يُنشئ SKUs جديدة
         })),
       };
       const created = await apiPost<ProductDTO>("/api/products", payload);
@@ -289,21 +289,6 @@ export default function InventoryPage() {
                 {s}
               </option>
             ))}
-          </select>
-
-          <select
-            className="input"
-            value={filters.image}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                image: e.target.value as Filters["image"],
-              }))
-            }
-          >
-            <option value="">بصورة أو بدون</option>
-            <option value="with">بصورة</option>
-            <option value="without">بدون صورة</option>
           </select>
         </div>
 
@@ -486,9 +471,9 @@ function ProductCard({
             <Package className="h-10 w-10" />
           </div>
         )}
-        {product.sku && (
-          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white nums">
-            {product.sku}
+        {product.productType && (
+          <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+            {product.productType.name}
           </span>
         )}
       </div>
@@ -581,9 +566,9 @@ function ProductListRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-medium text-text">{product.name}</p>
-          {product.sku && (
-            <span className="hidden text-xs text-muted nums sm:inline">
-              · {product.sku}
+          {product.productType && (
+            <span className="hidden text-xs text-muted sm:inline">
+              · {product.productType.name}
             </span>
           )}
         </div>

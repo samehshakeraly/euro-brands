@@ -3,80 +3,90 @@
 // أي شخص لديه أدوات المطوّر في المتصفح يستطيع تجاوزها في ثوانٍ.
 // للأمان الفعلي يلزم تسجيل دخول حقيقي عبر الخادم وكوكيز HttpOnly.
 
-const HASH_KEY = "eb-auth-hash";
 const SESSION_KEY = "eb-auth-session";
 const SESSION_HOURS = 24;
 
-export const DEFAULT_PASSWORD = "0000";
 export const LOGO_PATH = "/logo.svg"; // غيّر لـ "/logo.png" بعد رفع الصورة
 
-// SHA-256 hex عبر Web Crypto API (متاحة في المتصفحات الحديثة)
-export async function sha256(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+// ----------------------------------------------------
+//  الأدوار
+// ----------------------------------------------------
+export type Role = "ADMIN" | "CASHIER";
+
+export const ROLE_LABELS: Record<Role, string> = {
+  ADMIN: "مدير",
+  CASHIER: "كاشير",
+};
+
+// كلمات المرور الثابتة → الدور. (2021 = مدير، 0000 = كاشير)
+const PASSWORD_ROLES: Record<string, Role> = {
+  "2021": "ADMIN",
+  "0000": "CASHIER",
+};
+
+export interface Session {
+  name: string;
+  role: Role;
+  expiresAt: number;
 }
 
-// تشفير كلمة المرور الحالية (المخزّنة أو الافتراضية)
-export async function getStoredHash(): Promise<string> {
-  const stored = localStorage.getItem(HASH_KEY);
-  if (stored) return stored;
-  return sha256(DEFAULT_PASSWORD);
-}
-
-export function setStoredHash(hash: string) {
-  localStorage.setItem(HASH_KEY, hash);
-}
-
-// إنشاء جلسة لمدة 24 ساعة
-export function startSession() {
-  const expiresAt = Date.now() + SESSION_HOURS * 60 * 60 * 1000;
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ expiresAt }));
+// ----------------------------------------------------
+//  إدارة الجلسة
+// ----------------------------------------------------
+export function startSession(name: string, role: Role) {
+  const session: Session = {
+    name,
+    role,
+    expiresAt: Date.now() + SESSION_HOURS * 60 * 60 * 1000,
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
 export function endSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-// هل توجد جلسة صالحة الآن؟
-export function isSessionValid(): boolean {
+// قراءة الجلسة الحالية (أو null عند غيابها/انتهائها)
+export function getSession(): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return false;
-    const { expiresAt } = JSON.parse(raw) as { expiresAt: number };
-    if (typeof expiresAt !== "number" || Date.now() >= expiresAt) {
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<Session>;
+    if (
+      typeof s.expiresAt !== "number" ||
+      Date.now() >= s.expiresAt ||
+      typeof s.name !== "string" ||
+      (s.role !== "ADMIN" && s.role !== "CASHIER")
+    ) {
       localStorage.removeItem(SESSION_KEY);
-      return false;
+      return null;
     }
-    return true;
+    return { name: s.name, role: s.role, expiresAt: s.expiresAt };
   } catch {
-    return false;
+    return null;
   }
 }
 
-// محاولة تسجيل الدخول؛ يعيد true عند نجاح المطابقة
-export async function tryLogin(password: string): Promise<boolean> {
-  const inputHash = await sha256(password);
-  const storedHash = await getStoredHash();
-  if (inputHash !== storedHash) return false;
-  startSession();
-  return true;
+// هل توجد جلسة صالحة الآن؟
+export function isSessionValid(): boolean {
+  return getSession() !== null;
 }
 
-// تغيير كلمة المرور (يتطلب الحالية)
-export async function changePassword(
-  current: string,
-  next: string
-): Promise<{ ok: boolean; error?: string }> {
-  if (!next || next.length < 4)
-    return { ok: false, error: "كلمة المرور الجديدة قصيرة جداً (4 أحرف على الأقل)" };
-  const currHash = await sha256(current);
-  const stored = await getStoredHash();
-  if (currHash !== stored)
-    return { ok: false, error: "كلمة المرور الحالية غير صحيحة" };
-  setStoredHash(await sha256(next));
-  startSession();
-  return { ok: true };
+// ----------------------------------------------------
+//  تسجيل الدخول
+// ----------------------------------------------------
+export interface LoginResult {
+  ok: boolean;
+  role?: Role;
+  error?: string;
+}
+
+// تسجيل الدخول بالاسم وكلمة المرور. عند نجاح المطابقة تُنشأ جلسة ويُعاد الدور.
+export function tryLogin(name: string, password: string): LoginResult {
+  const trimmedName = name.trim();
+  if (!trimmedName) return { ok: false, error: "الاسم مطلوب" };
+  const role = PASSWORD_ROLES[password];
+  if (!role) return { ok: false, error: "كلمة المرور غير صحيحة" };
+  startSession(trimmedName, role);
+  return { ok: true, role };
 }

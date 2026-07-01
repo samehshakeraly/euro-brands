@@ -12,6 +12,16 @@ import {
   mockHomeStats,
   mockListBrands,
   mockCreateBrand,
+  mockListProductTypes,
+  mockCreateProductType,
+  mockDeleteProductType,
+  mockSeedProductTypes,
+  mockListActivity,
+  mockCreateActivity,
+  mockListCustomers,
+  mockGetCustomer,
+  mockCreateCustomer,
+  mockUpdateCustomer,
   mockListSales,
   mockGetSale,
   mockCreateSale,
@@ -23,10 +33,14 @@ import {
   mockUploadUrl,
 } from "./mock-store";
 import {
+  parseActivityInput,
   parseBrandInput,
+  parseCustomerInput,
+  parseCustomerUpdateInput,
   parseDeliveryStatus,
   parseImportRows,
   parseProductInput,
+  parseProductTypeInput,
   parseSaleInput,
 } from "./validate";
 
@@ -84,6 +98,56 @@ export async function mockApi<T>(
   if (path === "/api/brands") {
     if (method === "GET") return mockListBrands(sp.get("category")) as T;
     if (method === "POST") return mockCreateBrand(parseBrandInput(body)) as T;
+  }
+
+  // /api/product-types
+  if (path === "/api/product-types") {
+    if (method === "GET") return mockListProductTypes(sp.get("category")) as T;
+    if (method === "POST")
+      return mockCreateProductType(parseProductTypeInput(body)) as T;
+  }
+
+  // /api/seed/product-types — مزامنة الأنواع الافتراضية (idempotent)
+  if (path === "/api/seed/product-types" && method === "POST") {
+    return mockSeedProductTypes() as T;
+  }
+
+  // /api/activity — سجل النشاط
+  if (path === "/api/activity") {
+    if (method === "GET") return mockListActivity(sp) as T;
+    if (method === "POST")
+      return mockCreateActivity(parseActivityInput(body)) as T;
+  }
+
+  // /api/product-types/[id]
+  const ptMatch = path.match(/^\/api\/product-types\/([^/]+)$/);
+  if (ptMatch && method === "DELETE") {
+    const removed = mockDeleteProductType(decodeURIComponent(ptMatch[1]));
+    if (!removed) throw new Error("النوع غير موجود");
+    return { id: ptMatch[1] } as T;
+  }
+
+  // /api/customers
+  if (path === "/api/customers") {
+    if (method === "GET") return mockListCustomers(sp) as T;
+    if (method === "POST")
+      return mockCreateCustomer(parseCustomerInput(body)) as T;
+  }
+
+  // /api/customers/[id]
+  const customerMatch = path.match(/^\/api\/customers\/([^/]+)$/);
+  if (customerMatch) {
+    const id = decodeURIComponent(customerMatch[1]);
+    if (method === "GET") {
+      const dto = mockGetCustomer(id);
+      if (!dto) throw new Error("العميل غير موجود");
+      return dto as T;
+    }
+    if (method === "PUT") {
+      const dto = mockUpdateCustomer(id, parseCustomerUpdateInput(body));
+      if (!dto) throw new Error("العميل غير موجود");
+      return dto as T;
+    }
   }
 
   // /api/sales

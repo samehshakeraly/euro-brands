@@ -19,7 +19,7 @@ const saleInclude = {
   items: {
     include: {
       product: { select: { name: true, brand: true } },
-      variant: { select: { size: true } },
+      variant: { select: { size: true, color: true, sku: true } },
     },
   },
 } satisfies Prisma.SaleInclude;
@@ -171,6 +171,34 @@ export async function POST(req: Request) {
           });
           const saleNumber = (last?.saleNumber ?? 0) + 1;
 
+          // تحديث/إنشاء العميل تلقائياً برقم هاتفه (إن وُجد)
+          if (input.customerPhone) {
+            const existingCustomer = await tx.customer.findUnique({
+              where: { phone: input.customerPhone },
+            });
+            if (existingCustomer) {
+              await tx.customer.update({
+                where: { phone: input.customerPhone },
+                data: {
+                  totalSpent: { increment: finalAmount },
+                  visitCount: { increment: 1 },
+                  lastVisitAt: new Date(),
+                },
+              });
+            } else if (input.saveAsNewCustomer && input.customerName) {
+              await tx.customer.create({
+                data: {
+                  name: input.customerName,
+                  phone: input.customerPhone,
+                  branch: input.branch as Branch,
+                  totalSpent: finalAmount,
+                  visitCount: 1,
+                  lastVisitAt: new Date(),
+                },
+              });
+            }
+          }
+
           return tx.sale.create({
             data: {
               saleNumber,
@@ -187,6 +215,7 @@ export async function POST(req: Request) {
               invoiceNotes: input.invoiceNotes ?? null,
               paidAmount: round2(paidAmount),
               remainingAmount,
+              cashierName: input.cashierName ?? null,
               isDelivery: !!input.delivery,
               orderSource:
                 (input.delivery?.orderSource as OrderSource | undefined) ??

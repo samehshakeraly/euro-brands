@@ -15,11 +15,16 @@ import {
   type PaymentMethodValue,
   type TransferMethodValue,
 } from "./constants";
+import { isCompleteEgyPhone, digitsOnly } from "./input-validators";
 import type {
+  ActivityLogInput,
   BrandInput,
+  CustomerInput,
+  CustomerUpdateInput,
   DeliveryInput,
   ImportRow,
   ProductInput,
+  ProductTypeInput,
   SaleInput,
   VariantInput,
 } from "./types";
@@ -45,6 +50,8 @@ export function parseProductInput(body: any): ProductInput {
     ? body.images.filter((x: unknown) => typeof x === "string").slice(0, 3)
     : [];
 
+  const productTypeId = asString(body?.productTypeId) || null;
+
   const rawVariants = Array.isArray(body?.variants) ? body.variants : [];
   if (rawVariants.length === 0)
     throw new ValidationError("يجب إضافة صف واحد على الأقل للمقاسات والكميات");
@@ -52,6 +59,7 @@ export function parseProductInput(body: any): ProductInput {
   const seen = new Set<string>();
   const variants: VariantInput[] = rawVariants.map((v: any, i: number) => {
     const size = asString(v?.size);
+    const color = asString(v?.color) || null;
     const branch = asString(v?.branch);
     const quantity = Number(v?.quantity);
     const price = Number(v?.price);
@@ -67,22 +75,27 @@ export function parseProductInput(body: any): ProductInput {
     if (!Number.isFinite(price) || price < 0)
       throw new ValidationError(`السعر غير صحيح في الصف ${i + 1}`);
 
-    const key = `${size}__${branch}`;
+    const key = `${size}__${branch}__${color ?? ""}`;
     if (seen.has(key))
       throw new ValidationError(
-        `لا يمكن تكرار نفس المقاس في نفس الفرع (${size})`
+        `لا يمكن تكرار نفس المقاس واللون في نفس الفرع (${size}${color ? ` / ${color}` : ""})`
       );
     seen.add(key);
 
     const id = asString(v?.id) || undefined;
+    const sku = asString(v?.sku) || null;
+    const skuManual = sku ? Boolean(v?.skuManual) : false;
 
     return {
       id,
       size,
+      color,
       branch: branch as BranchValue,
       quantity: Math.floor(quantity),
       minQuantity,
       price,
+      sku,
+      skuManual,
     };
   });
 
@@ -91,10 +104,30 @@ export function parseProductInput(body: any): ProductInput {
     brand,
     category: category as CategoryValue,
     description: asString(body?.description) || null,
-    sku: asString(body?.sku) || null,
     barcode: asString(body?.barcode) || null,
     images,
+    productTypeId,
     variants,
+  };
+}
+
+// التحقق من مدخلات نوع المنتج
+export function parseProductTypeInput(body: any): ProductTypeInput {
+  const name = asString(body?.name);
+  const code = asString(body?.code);
+  const category = asString(body?.category);
+  if (!name) throw new ValidationError("اسم النوع مطلوب");
+  if (!code) throw new ValidationError("كود النوع (البادئة) مطلوب");
+  if (!/^[A-Za-z0-9]+$/.test(code))
+    throw new ValidationError("كود النوع لازم يكون حروف لاتينية وأرقام فقط");
+  if (code.length > 6)
+    throw new ValidationError("كود النوع لازم يكون 6 حروف كحد أقصى");
+  if (!CATEGORIES.includes(category as CategoryValue))
+    throw new ValidationError("الفئة غير صحيحة");
+  return {
+    name,
+    code: code.toUpperCase(),
+    category: category as CategoryValue,
   };
 }
 
@@ -110,6 +143,9 @@ export function parseImportRows(body: any): ImportRow[] {
     const category = asString(r?.category);
     const branch = asString(r?.branch);
     const size = asString(r?.size);
+    const color = asString(r?.color) || null;
+    const sku = asString(r?.sku) || null;
+    const productType = asString(r?.productType) || null;
     const quantity = Number(r?.quantity);
     const price = Number(r?.price);
     const at = `الصف ${i + 1}`;
@@ -132,8 +168,11 @@ export function parseImportRows(body: any): ImportRow[] {
       category: category as CategoryValue,
       branch: branch as BranchValue,
       size,
+      color,
       quantity: Math.floor(quantity),
       price,
+      sku,
+      productType,
     };
   });
 }
@@ -205,19 +244,88 @@ export function parseSaleInput(body: any): SaleInput {
     delivery = parseDeliveryInput(body.delivery);
   }
 
+  const customerName = asString(body?.customerName) || null;
+  const customerPhone = asString(body?.customerPhone) || null;
+  const saveAsNewCustomer = !!body?.saveAsNewCustomer;
+  if (saveAsNewCustomer) {
+    if (!customerPhone)
+      throw new ValidationError("رقم هاتف العميل مطلوب لحفظه كعميل جديد");
+    if (!customerName)
+      throw new ValidationError("اسم العميل مطلوب لحفظه كعميل جديد");
+  }
+
   return {
     branch: branch as BranchValue,
     items,
     discountType,
     discountValue,
-    customerName: asString(body?.customerName) || null,
-    customerPhone: asString(body?.customerPhone) || null,
+    customerName,
+    customerPhone,
     customerNotes: asString(body?.customerNotes) || null,
     paymentMethod: paymentMethod as PaymentMethodValue,
     transferMethod,
     invoiceNotes: asString(body?.invoiceNotes) || null,
     paidAmount,
+    cashierName: asString(body?.cashierName) || null,
     delivery,
+    saveAsNewCustomer,
+  };
+}
+
+// التحقق من مدخلات العميل (إنشاء)
+export function parseCustomerInput(body: any): CustomerInput {
+  const name = asString(body?.name);
+  const phone = digitsOnly(asString(body?.phone));
+  if (!name) throw new ValidationError("اسم العميل مطلوب");
+  if (!isCompleteEgyPhone(phone))
+    throw new ValidationError("رقم الهاتف غير صحيح — يجب أن يكون 11 رقماً");
+
+  const branch = asString(body?.branch) || null;
+  if (branch && !BRANCHES.includes(branch as BranchValue))
+    throw new ValidationError("الفرع غير صحيح");
+
+  return {
+    name,
+    phone,
+    branch: (branch as BranchValue | null) ?? null,
+    notes: asString(body?.notes) || null,
+  };
+}
+
+// التحقق من مدخلات تعديل العميل (اسم/ملاحظات/فرع فقط)
+export function parseCustomerUpdateInput(body: any): CustomerUpdateInput {
+  const out: CustomerUpdateInput = {};
+
+  if (body?.name !== undefined) {
+    const name = asString(body.name);
+    if (!name) throw new ValidationError("اسم العميل مطلوب");
+    out.name = name;
+  }
+  if (body?.notes !== undefined) out.notes = asString(body.notes) || null;
+  if (body?.branch !== undefined) {
+    const branch = asString(body.branch) || null;
+    if (branch && !BRANCHES.includes(branch as BranchValue))
+      throw new ValidationError("الفرع غير صحيح");
+    out.branch = (branch as BranchValue | null) ?? null;
+  }
+
+  return out;
+}
+
+// التحقق من مدخلات سجل النشاط
+export function parseActivityInput(body: any): ActivityLogInput {
+  const userName = asString(body?.userName);
+  const userRole = asString(body?.userRole);
+  const action = asString(body?.action);
+  if (!userName) throw new ValidationError("اسم المستخدم مطلوب");
+  if (userRole !== "ADMIN" && userRole !== "CASHIER")
+    throw new ValidationError("الدور غير صحيح");
+  if (!action) throw new ValidationError("الإجراء مطلوب");
+  return {
+    userName,
+    userRole,
+    action,
+    details: asString(body?.details) || null,
   };
 }
 

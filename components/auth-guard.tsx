@@ -2,9 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { isSessionValid } from "@/lib/auth";
+import toast from "react-hot-toast";
+import { getSession } from "@/lib/auth";
 
-// حارس بسيط من جهة المتصفح — يعيد التوجيه إلى /login عند غياب الجلسة
+// مسارات يُسمح للكاشير بالوصول إليها (الفاتورة فقط)
+function cashierAllowed(pathname: string): boolean {
+  return pathname === "/pos" || pathname.startsWith("/pos/");
+}
+
+// حارس من جهة المتصفح: يفرض الجلسة والدور.
+// لا جلسة → /login. كاشير خارج /pos → /pos مع رسالة. المدير: وصول كامل.
 // (راجع تعليق الأمان في lib/auth.ts)
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -12,15 +19,25 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [ok, setOk] = useState(false);
 
   useEffect(() => {
-    if (isSessionValid()) {
-      setOk(true);
+    const session = getSession();
+
+    if (!session) {
+      const target =
+        pathname && pathname !== "/login"
+          ? `/login?next=${encodeURIComponent(pathname)}`
+          : "/login";
+      router.replace(target);
       return;
     }
-    const target =
-      pathname && pathname !== "/login"
-        ? `/login?next=${encodeURIComponent(pathname)}`
-        : "/login";
-    router.replace(target);
+
+    // فرض صلاحية الكاشير: يُسمح له بصفحة الفاتورة فقط
+    if (session.role === "CASHIER" && pathname && !cashierAllowed(pathname)) {
+      toast.error("ليس لديك صلاحية الوصول لهذه الصفحة");
+      router.replace("/pos");
+      return;
+    }
+
+    setOk(true);
   }, [router, pathname]);
 
   if (!ok) {

@@ -17,6 +17,7 @@ import {
   RotateCcw,
   FileDown,
   FileSpreadsheet,
+  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -289,9 +290,97 @@ export default function DashboardPage() {
             </h2>
             <DeliveryStats stats={data.deliveryStats} />
           </Card>
+
+          {/* القسم 5 — أداء الكاشيرين */}
+          <Card className="p-5">
+            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-text">
+              <Users className="h-5 w-5 text-accent" />
+              أداء الكاشيرين
+            </h2>
+            <CashierStats stats={data.cashierStats} />
+          </Card>
         </div>
       )}
     </div>
+  );
+}
+
+function CashierStats({ stats }: { stats: DashboardStats["cashierStats"] }) {
+  if (stats.length === 0) {
+    return (
+      <p className="text-sm text-muted">
+        لا توجد فواتير مسجّلة باسم كاشير في هذه الفترة
+      </p>
+    );
+  }
+  return (
+    <>
+      {/* جدول لسطح المكتب */}
+      <div className="hidden overflow-x-auto sm:block">
+        <table className="w-full min-w-[560px] text-right text-sm">
+          <thead>
+            <tr className="border-b text-muted">
+              <th className="px-3 py-2 font-medium">الاسم</th>
+              <th className="px-3 py-2 font-medium">عدد الفواتير</th>
+              <th className="px-3 py-2 font-medium">إجمالي المبيعات</th>
+              <th className="px-3 py-2 font-medium">متوسط الفاتورة</th>
+              <th className="px-3 py-2 font-medium">أعلى فاتورة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((c) => (
+              <tr key={c.name} className="border-b border-[var(--border)]">
+                <td className="px-3 py-2 font-medium text-text">{c.name}</td>
+                <td className="px-3 py-2 text-text nums">
+                  {formatNumber(c.count)}
+                </td>
+                <td className="px-3 py-2 font-bold text-text nums">
+                  {formatCurrency(c.total)}
+                </td>
+                <td className="px-3 py-2 text-muted nums">
+                  {formatCurrency(c.avgInvoice)}
+                </td>
+                <td className="px-3 py-2 text-muted nums">
+                  {formatCurrency(c.maxInvoice)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* بطاقات للموبايل */}
+      <div className="space-y-3 sm:hidden">
+        {stats.map((c) => (
+          <div key={c.name} className="rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-bold text-text">{c.name}</p>
+              <p className="font-bold text-accent nums">
+                {formatCurrency(c.total)}
+              </p>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 border-t pt-2 text-center text-xs">
+              <div>
+                <p className="text-muted">الفواتير</p>
+                <p className="mt-0.5 text-text nums">{formatNumber(c.count)}</p>
+              </div>
+              <div>
+                <p className="text-muted">المتوسط</p>
+                <p className="mt-0.5 text-text nums">
+                  {formatCurrency(c.avgInvoice)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted">الأعلى</p>
+                <p className="mt-0.5 text-text nums">
+                  {formatCurrency(c.maxInvoice)}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

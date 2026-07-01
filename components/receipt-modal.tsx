@@ -36,13 +36,14 @@ function receiptText(sale: SaleDTO): string {
     "----------------------------",
     ...sale.items.map(
       (it) =>
-        `${it.productName} (${it.size}) ×${it.quantity} = ${formatCurrency(it.subtotal)}`
+        `${it.productName} (${it.size}${it.color ? `/${it.color}` : ""}) ×${it.quantity} = ${formatCurrency(it.subtotal)}`
     ),
     "----------------------------",
     `الإجمالي: ${formatCurrency(sale.totalAmount)}`,
     ...(discount > 0 ? [`الخصم: ${formatCurrency(discount)}`] : []),
     `الصافي: ${formatCurrency(sale.finalAmount)}`,
     `طريقة الدفع: ${paymentLabel(sale)}`,
+    ...(sale.cashierName ? [`الكاشير: ${sale.cashierName}`] : []),
     `المدفوع: ${formatCurrency(sale.paidAmount)}`,
     ...(sale.remainingAmount > 0
       ? [`المتبقي: ${formatCurrency(sale.remainingAmount)}`]
@@ -137,7 +138,11 @@ export function ReceiptModal({
             <div key={it.id} className="flex justify-between gap-2 text-sm">
               <span className="min-w-0 truncate text-text">
                 {it.productName}{" "}
-                <span className="text-muted nums">({it.size}) ×{it.quantity}</span>
+                <span className="text-muted">
+                  (<span className="nums">{it.size}</span>
+                  {it.color ? `/${it.color}` : ""}) ×
+                  <span className="nums">{it.quantity}</span>
+                </span>
               </span>
               <span className="shrink-0 text-text nums">
                 {formatCurrency(it.subtotal)}
@@ -165,6 +170,12 @@ export function ReceiptModal({
             <span>طريقة الدفع</span>
             <span>{paymentLabel(sale)}</span>
           </div>
+          {sale.cashierName && (
+            <div className="flex justify-between text-muted">
+              <span>الكاشير</span>
+              <span>{sale.cashierName}</span>
+            </div>
+          )}
           <div className="flex justify-between text-success">
             <span>المدفوع</span>
             <span className="nums">{formatCurrency(sale.paidAmount)}</span>

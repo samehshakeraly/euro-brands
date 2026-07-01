@@ -4,6 +4,7 @@ import {
   Branch,
   DiscountType,
 } from "@prisma/client";
+import { DEFAULT_PRODUCT_TYPES } from "./constants";
 
 // منطق تعبئة البيانات التجريبية — مشترك بين سكربت CLI ومسار /api/seed.
 // يحذف البيانات السابقة ثم ينشئ 5 منتجات على الفرعين + فاتورتين.
@@ -16,6 +17,16 @@ export async function runSeed(
   await prisma.productVariant.deleteMany();
   await prisma.product.deleteMany();
   await prisma.brand.deleteMany();
+  await prisma.productType.deleteMany();
+
+  // أنواع المنتجات الافتراضية الموحّدة — الكود يدخل في SKU التلقائي للأصناف
+  await prisma.productType.createMany({
+    data: DEFAULT_PRODUCT_TYPES.map((t) => ({
+      name: t.name,
+      code: t.code,
+      category: t.category as Category,
+    })),
+  });
 
   const products = [
     {
